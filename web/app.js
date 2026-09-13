@@ -639,16 +639,20 @@ function renderLaneHeads(view) {
 
     const figures = document.createElement('div');
     figures.className = 'lane-figures';
+    // Счётчики дорожки — это всё, что она потратила, вместе с ведением
+    // карточки: извлекатель — такой же запрос к модели, и прятать его
+    // цену в отдельную строку «сверх» значило бы занижать счёт. Поэтому
+    // карточка идёт не рядом с итогом, а внутри него: «из них».
     const usage = (lane.totals && lane.totals.usage) || {};
     figures.appendChild(figureLine('всего на вход', kilo(usage.prompt || 0) + ' ток.'));
     if (lane.totals && lane.totals.cost && lane.totals.cost.known) {
-      figures.appendChild(figureLine('диалог стоил', formatUSD(lane.totals.cost.usd)));
+      figures.appendChild(figureLine('дорожка стоила', formatUSD(lane.totals.cost.usd)));
     }
     if (lane.facts && lane.facts.calls) {
       figures.appendChild(figureLine('карточка',
         plural(lane.facts.count, 'факт', 'факта', 'фактов') + ', правок ' + lane.facts.version));
       if (lane.facts.cost && lane.facts.cost.known) {
-        figures.appendChild(figureLine('карточка стоила',
+        figures.appendChild(figureLine('из них на карточку',
           formatUSD(lane.facts.cost.usd) + ' за ' + plural(lane.facts.calls, 'запрос', 'запроса', 'запросов')));
       }
     }
