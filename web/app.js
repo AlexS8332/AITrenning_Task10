@@ -9,25 +9,54 @@
 // Диалоги живут на сервере и на диске: здесь их список, открытый стенд
 // целиком и ходы, которые идут прямо сейчас (журнал приходит потоком SSE).
 
+// У каждой стратегии свой цвет, свой знак и своя полоска состава: полоска
+// показывает, из чего складывается запрос к модели, и три полоски рядом
+// отличаются с одного взгляда, не читая подписей.
+//
+//   вся история — одна сплошная полоса: уходит всё;
+//   окно        — обрубок с заштрихованным началом: старое выброшено;
+//   факты       — тот же обрубок, но вместо выброшенного узкая карточка.
 const MODES = {
   full: {
     name: 'Вся история',
+    glyph: '≡',
     rule: 'весь разговор уходит модели заново каждый ход',
+    sends: 'система + весь путь ветки дословно',
+    strip: [{ cls: 'win', share: 1, label: 'вся история' }],
     tone: 'var(--full)'
   },
   window: {
     name: 'Окно',
+    glyph: '⌐',
     rule: 'только последние сообщения, всё старше выброшено',
+    sends: 'система + последние сообщения; остальное выброшено',
+    strip: [{ cls: 'cut', share: 0.66, label: 'выброшено' }, { cls: 'win', share: 0.34, label: 'окно' }],
     tone: 'var(--window)'
   },
   facts: {
     name: 'Факты',
+    glyph: '♦',
     rule: 'последние сообщения плюс карточка «ключ — значение»',
+    sends: 'система + карточка фактов + последние сообщения',
+    strip: [
+      { cls: 'cut', share: 0.52, label: 'свёрнуто' },
+      { cls: 'card', share: 0.14, label: 'карточка' },
+      { cls: 'win', share: 0.34, label: 'окно' }
+    ],
     tone: 'var(--facts)'
   }
 };
 
 const MODE_ORDER = ['full', 'window', 'facts'];
+
+// Цвета веток. Ветка — не стратегия, и красится она не тоном стратегии, а
+// своим: иначе на экране два разных деления одним набором цветов. Цвет
+// закрепляется за веткой по её месту в дереве и держится всюду — в
+// дереве на пульте, в полосе «смотрим», в швах и в ленте.
+const BRANCH_TONES = [
+  'var(--branch-1)', 'var(--branch-2)', 'var(--branch-3)',
+  'var(--branch-4)', 'var(--branch-5)', 'var(--branch-6)'
+];
 
 const state = {
   agents: [],
@@ -42,10 +71,12 @@ const state = {
   draftKind: 'comparison',
   draftMode: 'facts',
   fileLane: 0,
-  // Что показывает лента: путь текущей ветки (то, что видит модель) или
-  // весь диалог одной лентой (то, чем он был бы без ветвления). Это и
-  // есть сравнение дерева с линейным диалогом.
+  // Что показывает лента: путь текущей ветки (то, что видит модель),
+  // весь диалог одной лентой (то, чем он был бы без ветвления) или
+  // хронологию — все ходы по времени, с отметками переключений между
+  // ветками.
   tapeMode: 'branch',
+  factsLane: 0,
   // Ходы, у которых ответ развёрнут целиком. Лента перерисовывается на
   // каждое событие идущего хода, и без этого развёрнутый ответ схлопывался
   // бы сам собой посреди чтения.
@@ -57,14 +88,17 @@ for (const id of [
   'model-name', 'strategy-note', 'history-dir', 'server-started',
   'new-button', 'conversations', 'conversations-empty',
   'stage-title', 'stage-note', 'stand-button', 'file-button', 'delete-button',
+  'facts-button',
   'switcher', 'switcher-buttons', 'switcher-rule',
   'nav-block', 'nav-note', 'tree', 'tree-hint', 'mark-button', 'fork-button',
-  'views', 'view-branch', 'view-linear', 'view-note',
+  'branchbar', 'branch-chips', 'branchbar-note',
+  'views', 'view-branch', 'view-linear', 'view-time', 'view-note',
   'lane-heads', 'tape', 'tape-empty',
   'composer', 'text', 'send-button', 'error',
   'new-dialog', 'new-close', 'new-create', 'agent-choice', 'kind-choice',
   'strategy-choice', 'single-strategy',
-  'file-dialog', 'file-close', 'file-tabs', 'file-path', 'file-body'
+  'file-dialog', 'file-close', 'file-tabs', 'file-path', 'file-body',
+  'facts-dialog', 'facts-close', 'facts-tabs', 'facts-body'
 ]) {
   el[id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = document.getElementById(id);
 }
@@ -132,6 +166,8 @@ async function init() {
   });
   el.fileButton.addEventListener('click', showFiles);
   el.fileClose.addEventListener('click', () => el.fileDialog.close());
+  el.factsButton.addEventListener('click', () => showFacts());
+  el.factsClose.addEventListener('click', () => el.factsDialog.close());
   el.deleteButton.addEventListener('click', dropCurrent);
   el.standButton.addEventListener('click', () => {
     const lane = state.view && state.view.lanes[0];
@@ -141,6 +177,7 @@ async function init() {
   el.forkButton.addEventListener('click', () => forkFrom(''));
   el.viewBranch.addEventListener('click', () => setTapeMode('branch'));
   el.viewLinear.addEventListener('click', () => setTapeMode('linear'));
+  el.viewTime.addEventListener('click', () => setTapeMode('time'));
 
   await refreshList();
 
@@ -260,8 +297,10 @@ function openBlank() {
   el.standButton.hidden = true;
   el.fileButton.hidden = true;
   el.deleteButton.hidden = true;
+  el.factsButton.hidden = true;
   el.switcher.hidden = true;
   el.navBlock.hidden = true;
+  el.branchbar.hidden = true;
   el.views.hidden = true;
   state.tapeMode = 'branch';
   el.laneHeads.innerHTML = '';
@@ -314,7 +353,10 @@ function setView(view) {
   el.stageTitle.textContent = view.title || 'Без названия';
   const lane = view.lanes[0] || {};
   const agent = state.agents.find((a) => a.key === lane.agentKey);
-  const modes = view.lanes.map((l) => (MODES[l.strategy] || {}).name || l.strategy || 'стратегия по умолчанию');
+  const modes = view.lanes.map((l) => {
+    const info = MODES[l.strategy];
+    return info ? info.glyph + ' ' + info.name : (l.strategy || 'стратегия по умолчанию');
+  });
   el.modelName.textContent = lane.model || el.modelName.textContent;
   const note = [agent ? agent.title : lane.agentKey, modes.join(' · ')];
   if (view.kind === 'single' && lane.branches > 1) {
@@ -327,6 +369,13 @@ function setView(view) {
   el.standButton.hidden = !(view.kind === 'single' && lane.group);
   el.fileButton.hidden = false;
   el.deleteButton.hidden = false;
+  // Карточка фактов — не подробность хода, а вторая память диалога, и
+  // смотреть её хотят отдельно от ленты: сколько в ней накопилось, что
+  // именно и на каком ходе появилось.
+  const withFacts = view.lanes.filter(hasFacts);
+  el.factsButton.hidden = withFacts.length === 0;
+  el.factsButton.textContent = 'Карточка фактов' +
+    (withFacts.length === 1 ? ' · ' + ((withFacts[0].factsCard.entries || []).length) : '');
   el.tapeEmpty.hidden = true;
 
   attachActive(view);
@@ -360,6 +409,7 @@ function setBusy(busy) {
   // Переход к месту в ленте ходу не мешает — блокируем только то, что
   // меняет диалог: переключение веток и ветвление от точки.
   for (const b of el.tree.querySelectorAll('.tree-branch, .point-fork')) b.disabled = busy;
+  for (const b of el.branchChips.querySelectorAll('button')) b.disabled = busy;
 }
 
 /* ---------- Ход: отправка и поток событий ---------- */
@@ -520,15 +570,118 @@ function renderSwitcher(lane) {
     const info = MODES[mode] || { name: mode, rule: '' };
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'ghost' + (lane.strategy === mode ? ' on' : '');
+    button.className = 'mode-button' + (lane.strategy === mode ? ' on' : '');
     button.style.setProperty('--tone', info.tone || 'var(--ink)');
-    button.textContent = info.name;
-    button.title = info.rule;
+    button.title = info.sends || info.rule;
     button.addEventListener('click', () => switchStrategy(mode));
+
+    const head = document.createElement('span');
+    head.className = 'mode-title';
+    const glyph = document.createElement('span');
+    glyph.className = 'mode-glyph';
+    glyph.textContent = info.glyph || '·';
+    head.appendChild(glyph);
+    head.appendChild(document.createTextNode(info.name));
+    button.appendChild(head);
+
+    if (info.strip) button.appendChild(modeStrip(info, false));
     el.switcherButtons.appendChild(button);
   }
   const info = MODES[lane.strategy] || { rule: '' };
   el.switcherRule.textContent = info.rule;
+}
+
+// modeStrip — полоска состава запроса: из чего сложится то, что уйдёт
+// модели. У полной истории одна сплошная полоса, у окна — обрубок с
+// заштрихованным началом, у фактов между ними узкая карточка. Три
+// полоски рядом отличаются раньше, чем прочитаны подписи под ними, — а
+// именно этого стенду и не хватало.
+function modeStrip(info, withLabels) {
+  const wrap = document.createElement('div');
+  wrap.className = 'mode-strip-wrap';
+
+  const strip = document.createElement('div');
+  strip.className = 'mode-strip';
+  for (const part of info.strip) {
+    const seg = document.createElement('span');
+    seg.className = 'mode-seg ' + part.cls;
+    seg.style.flex = String(part.share);
+    seg.title = part.label;
+    strip.appendChild(seg);
+  }
+  wrap.appendChild(strip);
+
+  if (withLabels) {
+    const labels = document.createElement('div');
+    labels.className = 'mode-strip-labels';
+    for (const part of info.strip) {
+      const label = document.createElement('span');
+      label.className = 'mode-label ' + part.cls;
+      label.style.flex = String(part.share);
+      label.textContent = part.label;
+      labels.appendChild(label);
+    }
+    wrap.appendChild(labels);
+  }
+  return wrap;
+}
+
+// branchTone — цвет ветки. Закрепляется по её месту в дереве и держится
+// всюду: в дереве на пульте, в полосе «смотрим», в швах и в отбивке
+// тактов. Цвет тут не украшение, а единственное, чем один вариант
+// разговора отличается от другого с одного взгляда.
+function branchTone(lane, id) {
+  const tree = (lane && lane.tree) || [];
+  const i = tree.findIndex((b) => b.id === id);
+  return i < 0 ? 'var(--muted)' : BRANCH_TONES[i % BRANCH_TONES.length];
+}
+
+function branchOf(lane, id) {
+  return ((lane && lane.tree) || []).find((b) => b.id === id) || null;
+}
+
+// hasFacts — есть ли у дорожки карточка с записями. По ней решают,
+// показывать ли кнопку «Карточка фактов»: у окна и полной истории
+// карточки нет вовсе.
+function hasFacts(lane) {
+  return !!(lane && lane.factsCard && lane.factsCard.entries && lane.factsCard.entries.length);
+}
+
+// renderBranchBar — полоса над лентой: в какой ветке идёт разговор и
+// какие есть ещё. Дерево на пульте показывает всю структуру, а здесь —
+// только выбор, зато вплотную к ленте и в цвете ветки: вопрос «что я
+// сейчас смотрю» возникает над лентой, а не на пульте.
+function renderBranchBar(lane) {
+  const tree = lane.tree || [];
+  el.branchbar.hidden = tree.length === 0;
+  if (!tree.length) return;
+
+  el.branchChips.innerHTML = '';
+  for (const branch of tree) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'branch-chip' + (branch.active ? ' on' : '');
+    chip.style.setProperty('--btone', branchTone(lane, branch.id));
+    chip.title = branch.active
+      ? 'Эту ветку вы и смотрите: следующая реплика уйдёт в неё'
+      : 'Перейти в ветку «' + branch.name + '»: лента покажет её путь, следующая реплика уйдёт в неё';
+    chip.addEventListener('click', () => { if (!branch.active) switchBranch(branch.id); });
+
+    const name = document.createElement('b');
+    name.textContent = branch.name;
+    chip.appendChild(name);
+
+    const meta = document.createElement('span');
+    meta.textContent = branch.active
+      ? 'смотрим · ' + plural(branch.pathTurns, 'ход', 'хода', 'ходов')
+      : plural(branch.pathTurns, 'ход', 'хода', 'ходов');
+    chip.appendChild(meta);
+    el.branchChips.appendChild(chip);
+  }
+
+  el.branchbarNote.textContent = tree.length > 1
+    ? 'Следующая реплика уйдёт в отмеченную ветку. Лента ниже показывает её путь — то, что видит модель.'
+    : 'Ветка пока одна: разговор ещё не раздваивался. «⑂ Ветка отсюда» на пульте разведёт его с этого места.';
 }
 
 // renderTree — дерево диалога на пульте слева: ветки с отступом по
@@ -580,6 +733,7 @@ function branchRow(branch, depth, tree) {
   row.type = 'button';
   row.className = 'tree-branch' + (branch.active ? ' on' : '');
   row.style.setProperty('--depth', depth);
+  row.style.setProperty('--btone', branchTone({ tree }, branch.id));
   row.title = branch.active
     ? 'Здесь идёт разговор: следующая реплика уйдёт в эту ветку'
     : 'Перейти в эту ветку — следующая реплика уйдёт в неё';
@@ -590,7 +744,8 @@ function branchRow(branch, depth, tree) {
   row.appendChild(name);
 
   const meta = document.createElement('span');
-  const parts = [plural(branch.pathTurns, 'ход', 'хода', 'ходов') + ' в пути'];
+  const parts = [(branch.active ? 'смотрим · ' : '') +
+    plural(branch.pathTurns, 'ход', 'хода', 'ходов') + ' в пути'];
   if (branch.parent) {
     const parent = tree.find((b) => b.id === branch.parent);
     parts.push('своих ' + branch.turns);
@@ -693,9 +848,10 @@ function reducedMotion() {
 
 /* ---------- Сравнение дерева с линейным диалогом ---------- */
 
-// renderViews — две вкладки над лентой. «Путь ветки» — то, что видит
+// renderViews — три вкладки над лентой. «Путь ветки» — то, что видит
 // модель; «Весь диалог лентой» — тот же разговор, каким он был бы, если
-// бы ветвиться было нельзя. Пока ветка одна, сравнивать нечего, и
+// бы ветвиться было нельзя; «Переключения» — как он шёл на самом деле, с
+// возвратами из ветки в ветку. Пока ветка одна, сравнивать нечего, и
 // вкладок нет.
 function renderViews(lane) {
   const linear = lane.linear || [];
@@ -708,8 +864,24 @@ function renderViews(lane) {
 
   el.viewBranch.classList.toggle('on', state.tapeMode === 'branch');
   el.viewLinear.classList.toggle('on', state.tapeMode === 'linear');
+  el.viewTime.classList.toggle('on', state.tapeMode === 'time');
   el.viewBranch.textContent = 'Путь ветки «' + (lane.branchName || '—') + '»';
   el.viewLinear.textContent = 'Весь диалог лентой';
+  const switches = switchCount(lane);
+  el.viewTime.textContent = switches
+    ? 'Переключения · ' + switches
+    : 'Переключения';
+  el.viewBranch.style.setProperty('--btone', branchTone(lane, lane.branchId));
+
+  if (state.tapeMode === 'time') {
+    const rows = timeline(lane);
+    const parts = ['Ходы по времени — так, как разговор шёл на самом деле: ' +
+      plural(rows.length, 'ход', 'хода', 'ходов') + ', ' +
+      plural(switches, 'переключение', 'переключения', 'переключений') + ' между ветками.'];
+    parts.push('Каждый ход модель вела по пути той ветки, в которой он сделан: соседний вариант в её контекст не попадал ни разу.');
+    el.viewNote.textContent = parts.join(' ');
+    return;
+  }
 
   const pathTurns = (lane.turns || []).length;
   const pathMessages = (lane.messages || []).length;
@@ -750,6 +922,28 @@ function linearCost(lane) {
   return '';
 }
 
+// timeline — все ходы всех веток по времени. LinearTurns на сервере
+// сложены по веткам: сначала одна целиком, потом другая, — это «диалог,
+// в котором ветвиться было нельзя». Хронология отвечает на другой
+// вопрос: как разговор шёл на самом деле, с возвратами из ветки в ветку.
+function timeline(lane) {
+  return ((lane && lane.linear) || []).slice()
+    .sort((a, b) => new Date(a.started) - new Date(b.started));
+}
+
+// switchCount — сколько раз разговор перешёл из ветки в ветку. Считается
+// по хронологии: два хода подряд в разных ветках — одно переключение.
+function switchCount(lane) {
+  let count = 0;
+  let prev = null;
+  for (const turn of timeline(lane)) {
+    if (!turn.branch) continue;
+    if (prev && turn.branch !== prev) count++;
+    prev = turn.branch;
+  }
+  return count;
+}
+
 function setTapeMode(mode) {
   if (state.tapeMode === mode) return;
   state.tapeMode = mode;
@@ -767,10 +961,12 @@ function renderStage() {
   if (single) {
     renderSwitcher(view.lanes[0]);
     renderTree(view.lanes[0]);
+    renderBranchBar(view.lanes[0]);
     renderViews(view.lanes[0]);
     setBusy(Object.keys(state.sources).length > 0);
   } else {
     el.views.hidden = true;
+    el.branchbar.hidden = true;
   }
   el.laneHeads.style.setProperty('--lanes', view.lanes.length);
   renderLaneHeads(view);
@@ -828,13 +1024,31 @@ function renderLaneHeads(view) {
     const left = document.createElement('div');
     const name = document.createElement('h3');
     name.className = 'lane-name';
-    name.textContent = mode.name;
+    if (mode.glyph) {
+      const glyph = document.createElement('span');
+      glyph.className = 'mode-glyph';
+      glyph.textContent = mode.glyph;
+      name.appendChild(glyph);
+    }
+    name.appendChild(document.createTextNode(mode.name));
     left.appendChild(name);
+
+    // Полоска состава стоит сразу под именем: она отвечает на вопрос
+    // «чем эта дорожка отличается от соседней» быстрее любой подписи.
+    if (mode.strip) left.appendChild(modeStrip(mode, true));
 
     const rule = document.createElement('p');
     rule.className = 'lane-rule';
     rule.textContent = mode.rule;
     left.appendChild(rule);
+
+    const seen = laneSeen(lane);
+    if (seen) {
+      const line = document.createElement('p');
+      line.className = 'lane-seen';
+      line.textContent = seen;
+      left.appendChild(line);
+    }
 
     const figures = document.createElement('div');
     figures.className = 'lane-figures';
@@ -881,6 +1095,35 @@ function renderLaneHeads(view) {
     head.appendChild(gauge(turns[turns.length - 1], scale));
     el.laneHeads.appendChild(head);
   });
+}
+
+// laneSeen — сколько истории дошло до модели на последнем ходе. Числа
+// про токены есть и в шкале, но «модель получила 8 сообщений из 34»
+// объясняет разницу стратегий тем, чем разговор и меряют, — репликами.
+function laneSeen(lane) {
+  const turns = laneTurns(lane);
+  const last = turns[turns.length - 1];
+  const c = (last && last.context) || null;
+  if (!c || !c.mode) return '';
+  // Сообщения хода уже лежат в пути, а ход шёл до них: вычитаем, чтобы
+  // считать то же, что видела модель.
+  const total = ((lane.messages || []).length) - (last.messages || 0);
+  if (total <= 0) return '';
+
+  const all = plural(total, 'сообщение', 'сообщения', 'сообщений');
+  if (c.mode === 'full' || !c.dropped) {
+    return c.mode === 'full'
+      ? 'на последнем ходе модель получила всю историю: ' + all
+      : 'на последнем ходе ушло всё (' + all + '): история пока короче окна';
+  }
+  const sent = Math.max(0, total - c.dropped);
+  const head = 'на последнем ходе модель получила ' +
+    plural(sent, 'сообщение', 'сообщения', 'сообщений') + ' из ' + total;
+  if (c.mode === 'facts') {
+    const count = (lane.facts && lane.facts.count) || 0;
+    return head + ', остальное — карточкой из ' + plural(count, 'факта', 'фактов', 'фактов');
+  }
+  return head + ', остальное выброшено без замены';
 }
 
 function figureLine(label, value) {
@@ -956,9 +1199,15 @@ function renderTape(view) {
   // под последним ходом в этом режиме не показываем — она принадлежит
   // текущей ветке, а лента к ветке не привязана.
   const single = view.kind === 'single';
-  const linear = single && state.tapeMode === 'linear';
-  const lanes = linear
-    ? [(view.lanes[0].linear || []).map((t) => ({ ...t, events: [], live: false }))]
+  const tapeMode = single ? state.tapeMode : 'branch';
+  // Плоские режимы — те, где дорожка одна и ходы взяты не из пути ветки:
+  // весь диалог лентой и хронология переключений.
+  const flat = tapeMode !== 'branch';
+  const flatTurns = tapeMode === 'time'
+    ? timeline(view.lanes[0])
+    : (view.lanes[0].linear || []);
+  const lanes = flat
+    ? [flatTurns.map((t) => ({ ...t, events: [], live: false }))]
     : view.lanes.map(laneTurns);
   const beats = lanes.reduce((max, turns) => Math.max(max, turns.length), 0);
   el.tape.innerHTML = '';
@@ -971,7 +1220,8 @@ function renderTape(view) {
   // Граница окна считается по одной дорожке: на стенде у трёх дорожек
   // она своя, и одна черта поперёк ленты врала бы сразу про две. В ленте
   // «весь диалог» её тоже нет — тот поток модель не видела ни разу.
-  const bound = single && !linear ? windowBoundary(lanes[0]) : null;
+  const bound = single && !flat ? windowBoundary(lanes[0]) : null;
+  const branched = single && (view.lanes[0].branches || 1) > 1;
 
   let shownBranch = null;
   let shownMode = null;
@@ -982,11 +1232,17 @@ function renderTape(view) {
     // ветвления надо показать: дальше идут ходы, которых в соседней ветке
     // нет.
     if (single && asked && asked.branch && asked.branch !== shownBranch) {
-      // В ленте швом подписан каждый кусок, включая первый: она для того
-      // и нужна, чтобы видеть, где чей вариант. В пути ветки первый шов
-      // лишний — разговор с него и начинается.
-      if (shownBranch !== null || linear) {
-        el.tape.appendChild(branchSeam(view.lanes[0], asked.branch, linear));
+      // В плоских лентах швом подписан каждый кусок, включая первый: они
+      // для того и нужны, чтобы видеть, где чей вариант. В пути ветки
+      // первый шов лишний — разговор с него и начинается.
+      if (shownBranch !== null || flat) {
+        el.tape.appendChild(branchSeam(view.lanes[0], asked.branch, {
+          head: flat && shownBranch === null,
+          // В хронологии смена ветки — не заголовок куска, а событие:
+          // здесь человек взял и перешёл в другой вариант.
+          switched: tapeMode === 'time' && shownBranch !== null,
+          turn: asked
+        }));
       }
       shownBranch = asked.branch;
     }
@@ -1011,6 +1267,13 @@ function renderTape(view) {
 
     const question = document.createElement('div');
     question.className = 'beat-q';
+    // Отбивка такта красится цветом ветки, в которой ход сделан: в пути
+    // ветки по ней видно унаследованную часть, в плоских лентах — чей
+    // это вариант. Пока ветка одна, красить нечего.
+    if (branched && asked && asked.branch) {
+      question.classList.add('branched');
+      question.style.setProperty('--btone', branchTone(view.lanes[0], asked.branch));
+    }
     const num = document.createElement('span');
     num.className = 'beat-num';
     num.textContent = (i + 1) + '.';
@@ -1019,13 +1282,21 @@ function renderTape(view) {
     text.className = 'beat-text';
     text.textContent = (asked && asked.user) || '';
     question.appendChild(text);
+    if (branched && flat && asked && asked.branch) {
+      const chip = document.createElement('span');
+      chip.className = 'beat-branch';
+      const branch = branchOf(view.lanes[0], asked.branch);
+      chip.textContent = branch ? branch.name : 'ветка';
+      chip.title = 'Ход сделан в этой ветке';
+      question.appendChild(chip);
+    }
     beat.appendChild(question);
 
     const row = document.createElement('div');
     row.className = 'beat-lanes';
     row.style.setProperty('--lanes', view.lanes.length);
     view.lanes.forEach((lane, j) => {
-      row.appendChild(laneCell(lane, lanes[j][i], i === beats - 1 && !linear));
+      row.appendChild(laneCell(lane, lanes[j][i], i === beats - 1 && !flat));
     });
     beat.appendChild(row);
     el.tape.appendChild(beat);
@@ -1085,14 +1356,26 @@ function modeSeam(mode) {
 }
 
 // branchSeam — шов в ленте: с этого места разговор идёт в другой ветке.
-// В режиме «весь диалог лентой» это заголовок куска, в пути ветки —
-// отметка на месте ветвления.
-function branchSeam(lane, branchId, head) {
-  const branch = (lane.tree || []).find((b) => b.id === branchId);
+// В плоских лентах это заголовок куска, в пути ветки — отметка на месте
+// ветвления, в хронологии — само переключение. Красится цветом ветки, в
+// которую перешли: тем же, каким она подписана на полосе «смотрим» и в
+// дереве на пульте.
+function branchSeam(lane, branchId, opts) {
+  const o = opts || {};
+  const branch = branchOf(lane, branchId);
   const name = branch ? '«' + branch.name + '»' : 'другая ветка';
   const seam = document.createElement('div');
-  seam.className = 'seam' + (head ? ' head' : '');
-  seam.textContent = head ? 'ветка ' + name : 'дальше — ветка ' + name;
+  seam.className = 'seam branch' + (o.head ? ' head' : '') + (o.switched ? ' switched' : '');
+  seam.style.setProperty('--btone', branchTone(lane, branchId));
+
+  if (o.switched) {
+    const when = o.turn && o.turn.started ? ' · ' + formatTime(new Date(o.turn.started)) : '';
+    seam.textContent = '⇄ перешли в ветку ' + name + when;
+    seam.title = 'Здесь разговор переключили: следующие ходы модель вела уже по пути этой ветки, ' +
+      'а соседний вариант в её контекст не попадал.';
+  } else {
+    seam.textContent = o.head ? 'ветка ' + name : 'дальше — ветка ' + name;
+  }
   return seam;
 }
 
@@ -1164,9 +1447,7 @@ function laneCell(lane, turn, last) {
   const figures = turnFigures(turn);
   if (figures) cell.appendChild(figures);
   if (turn.events && turn.events.length) cell.appendChild(trail(turn));
-  if (last && lane.factsCard && lane.factsCard.entries && lane.factsCard.entries.length) {
-    cell.appendChild(card(lane.factsCard));
-  }
+  if (last && hasFacts(lane)) cell.appendChild(card(lane));
   return cell;
 }
 
@@ -1193,6 +1474,7 @@ function turnFigures(turn) {
   if (u.cacheHit) parts.push(['из кэша', Math.round(100 * u.cacheHit / Math.max(1, u.prompt)) + '%']);
   if (c.saved) parts.push(['стратегия сняла', '≈' + kilo(c.saved) + ' из ≈' + kilo(c.full)]);
   else if (c.dropped) parts.push(['выброшено окном', plural(c.dropped, 'сообщение', 'сообщения', 'сообщений')]);
+  if (c.mode === 'facts' && c.factsVersion) parts.push(['карточка', 'версия ' + c.factsVersion]);
   if (c.branchSaved) parts.push(['ветвление сняло', '≈' + kilo(c.branchSaved)]);
   if (t.cost && t.cost.known) parts.push(['стоил', formatUSD(t.cost.usd)]);
   if (!parts.length) return null;
@@ -1312,7 +1594,8 @@ function eventNumbers(ev) {
 
 // card — карточка фактов дорожки: всё, что она помнит о начале разговора,
 // по строке на факт. Модель видит именно её, а не начало списка сообщений.
-function card(memory) {
+function card(lane) {
+  const memory = lane.factsCard;
   const box = document.createElement('details');
   box.className = 'card';
   const summary = document.createElement('summary');
@@ -1338,7 +1621,151 @@ function card(memory) {
     table.appendChild(tr);
   }
   box.appendChild(table);
+
+  // Отсюда уходят за тем, чего в таблице нет: откуда каждый факт взялся
+  // и во что обошлась вся карточка.
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'unclip';
+  more.textContent = 'открыть карточку целиком';
+  more.addEventListener('click', () => {
+    const lanes = (state.view ? state.view.lanes : []).filter(hasFacts);
+    state.factsLane = Math.max(0, lanes.findIndex((l) => l.id === lane.id));
+    showFacts();
+  });
+  box.appendChild(more);
   return box;
+}
+
+/* ---------- Карточка фактов целиком ---------- */
+
+// showFacts — вторая память диалога отдельным окном. Под последним ходом
+// карточка лежит свёрнутой и показывает только текущее содержимое; сюда
+// приходят с другим вопросом — что в ней вообще накопилось, откуда взялся
+// каждый факт и во что обошлось её ведение.
+function showFacts() {
+  if (!state.view) return;
+  const lanes = state.view.lanes.filter(hasFacts);
+  if (!lanes.length) return;
+  state.factsLane = Math.min(Math.max(0, state.factsLane), lanes.length - 1);
+
+  el.factsTabs.innerHTML = '';
+  el.factsTabs.hidden = lanes.length < 2;
+  lanes.forEach((lane, i) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ghost' + (i === state.factsLane ? ' on' : '');
+    button.textContent = (MODES[lane.strategy] || {}).name || lane.strategy || 'диалог';
+    button.addEventListener('click', () => { state.factsLane = i; showFacts(); });
+    el.factsTabs.appendChild(button);
+  });
+
+  el.factsBody.innerHTML = '';
+  el.factsBody.appendChild(factsPanel(lanes[state.factsLane]));
+  if (!el.factsDialog.open) el.factsDialog.showModal();
+}
+
+function factsPanel(lane) {
+  const memory = lane.factsCard;
+  const box = document.createElement('div');
+  box.className = 'facts-panel';
+  box.style.setProperty('--tone', (MODES[lane.strategy] || {}).tone || 'var(--facts)');
+
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent = lane.strategy === 'facts'
+    ? 'Модель получает эту карточку отдельным сообщением system вместо начала разговора. Ведёт её второй запрос к модели после каждого хода — он и стоит денег.'
+    : 'Карточка осталась от стратегии «Факты»: сейчас диалог идёт по другой стратегии, и модель её не получает. Записи никуда не делись и вернутся вместе со стратегией.';
+  box.appendChild(intro);
+
+  const figures = document.createElement('div');
+  figures.className = 'facts-figures';
+  figures.appendChild(figureLine('записей', String(memory.entries.length)));
+  figures.appendChild(figureLine('правок карточки', String(memory.version)));
+  figures.appendChild(figureLine('символов', String(cardRunes(memory))));
+  if (lane.facts && lane.facts.calls) {
+    figures.appendChild(figureLine('запросов к извлекателю', String(lane.facts.calls)));
+  }
+  if (lane.facts && lane.facts.cost && lane.facts.cost.known) {
+    figures.appendChild(figureLine('обошлась в', formatUSD(lane.facts.cost.usd)));
+  }
+  box.appendChild(figures);
+
+  const table = document.createElement('table');
+  table.className = 'card-table';
+  for (const entry of memory.entries) {
+    const tr = document.createElement('tr');
+    const key = document.createElement('th');
+    key.textContent = entry.key;
+    tr.appendChild(key);
+    const value = document.createElement('td');
+    value.textContent = entry.value;
+    tr.appendChild(value);
+    const when = document.createElement('td');
+    when.className = 'when';
+    when.textContent = entry.since === entry.turn ? 'ход ' + entry.turn : entry.since + '→' + entry.turn;
+    when.title = 'записан на ходе ' + entry.since + ', последняя правка на ходе ' + entry.turn;
+    tr.appendChild(when);
+    table.appendChild(tr);
+  }
+  box.appendChild(table);
+
+  box.appendChild(factsGrowth(memory));
+
+  // Карточка принадлежит ветке, а не диалогу: при ветвлении она
+  // копируется, и дальше в каждой ветке своя. Об этом надо сказать прямо
+  // там, где её читают.
+  const tree = lane.tree || [];
+  if (tree.length > 1) {
+    const note = document.createElement('p');
+    note.className = 'hint facts-branches';
+    note.textContent = 'Карточка принадлежит ветке: показана карточка ветки «' + (lane.branchName || '—') +
+      '». В остальных — ' + tree.filter((b) => b.id !== lane.branchId)
+        .map((b) => '«' + b.name + '» ' + ((b.facts && b.facts.count) || 0)).join(', ') + '.';
+    box.appendChild(note);
+  }
+  return box;
+}
+
+// factsGrowth — как карточка набиралась: по ходам, в порядке появления.
+// Таблица отвечает «что модель помнит сейчас», а это — «откуда каждый
+// факт взялся»; без второго непонятно, чем карточка отличается от
+// пересказа последних сообщений.
+function factsGrowth(memory) {
+  const byTurn = new Map();
+  for (const entry of memory.entries) {
+    if (!byTurn.has(entry.since)) byTurn.set(entry.since, []);
+    byTurn.get(entry.since).push(entry);
+  }
+  const turns = [...byTurn.keys()].sort((a, b) => a - b);
+
+  const box = document.createElement('div');
+  box.className = 'facts-growth';
+  const title = document.createElement('h3');
+  title.textContent = 'Как карточка набиралась';
+  box.appendChild(title);
+
+  for (const turn of turns) {
+    const row = document.createElement('div');
+    row.className = 'growth-row';
+    const at = document.createElement('span');
+    at.className = 'growth-turn';
+    at.textContent = 'ход ' + turn;
+    row.appendChild(at);
+
+    const keys = document.createElement('span');
+    keys.className = 'growth-keys';
+    keys.textContent = byTurn.get(turn).map((e) => e.key + (e.turn > e.since ? ' (правлен на ходе ' + e.turn + ')' : '')).join(', ');
+    row.appendChild(keys);
+    box.appendChild(row);
+  }
+  return box;
+}
+
+function cardRunes(memory) {
+  let n = 0;
+  for (const entry of memory.entries || []) n += (entry.key || '').length + (entry.value || '').length;
+  return n;
 }
 
 /* ---------- Файлы и удаление ---------- */

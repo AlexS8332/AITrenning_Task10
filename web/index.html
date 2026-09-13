@@ -71,19 +71,33 @@
         <h2 id="stage-title">Новый стенд</h2>
         <span class="stage-note" id="stage-note">реплика уйдёт трём дорожкам сразу</span>
         <div class="stage-actions">
+          <button type="button" id="facts-button" class="ghost" hidden
+            title="Показать карточку фактов целиком: что в ней накопилось и на каком ходе появилось.">Карточка фактов</button>
           <button type="button" id="stand-button" class="ghost" hidden>Вернуться на стенд</button>
           <button type="button" id="file-button" class="ghost" hidden>Файл на диске</button>
           <button type="button" id="delete-button" class="ghost danger" hidden>Удалить</button>
         </div>
       </div>
 
-      <!-- Сравнение дерева с линейным диалогом: две вкладки над лентой.
+      <!-- Полоса «смотрим»: какая версия разговора сейчас на экране. В
+           дереве слева ветку видно вместе со всем деревом, а здесь — над
+           самой лентой, в цвете ветки и в одно касание. -->
+      <div class="branchbar" id="branchbar" hidden>
+        <span class="branchbar-label">Смотрим</span>
+        <div class="branch-chips" id="branch-chips"></div>
+        <span class="branchbar-note" id="branchbar-note"></span>
+      </div>
+
+      <!-- Сравнение дерева с линейным диалогом: вкладки над лентой.
            «Путь ветки» — то, что видит модель; «Весь диалог лентой» — тот
-           же разговор, каким он был бы, если бы ветвиться было нельзя. -->
+           же разговор, каким он был бы, если бы ветвиться было нельзя;
+           «Переключения» — все ходы по времени, с отметками переходов из
+           ветки в ветку. -->
       <div class="views" id="views" hidden>
         <div class="view-tabs">
           <button type="button" id="view-branch" class="ghost on">Путь ветки</button>
           <button type="button" id="view-linear" class="ghost">Весь диалог лентой</button>
+          <button type="button" id="view-time" class="ghost">Переключения</button>
         </div>
         <p class="view-note" id="view-note"></p>
       </div>
@@ -130,6 +144,17 @@
     <div class="dialog-actions">
       <button type="button" id="new-create" class="solid">Создать</button>
     </div>
+  </dialog>
+
+  <!-- Карточка фактов целиком: что модель получает вместо начала
+       разговора и на каком ходе это в карточку попало. -->
+  <dialog id="facts-dialog">
+    <div class="dialog-head">
+      <h2>Карточка фактов</h2>
+      <button type="button" id="facts-close" class="ghost">Закрыть</button>
+    </div>
+    <div class="file-tabs" id="facts-tabs"></div>
+    <div id="facts-body"></div>
   </dialog>
 
   <dialog id="file-dialog">

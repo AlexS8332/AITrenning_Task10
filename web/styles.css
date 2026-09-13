@@ -13,6 +13,16 @@
   --window: #5f7490;
   --facts: #9a7018;
 
+  /* Цвета веток. Они намеренно не совпадают с цветами стратегий: на
+     экране два разных деления — «чем обходятся с историей» и «какая это
+     версия разговора», — и путать их одним набором цветов нельзя. */
+  --branch-1: #4a5d6e;
+  --branch-2: #8c4b2f;
+  --branch-3: #5b6b2d;
+  --branch-4: #6d4a72;
+  --branch-5: #2f6b6b;
+  --branch-6: #8a5a1f;
+
   --error: #7e2e24;
   --user: #33463c;
 
@@ -33,6 +43,13 @@
     --full: #74b79c;
     --window: #9db2ce;
     --facts: #d6ad55;
+
+    --branch-1: #9fb6c9;
+    --branch-2: #d89a78;
+    --branch-3: #adbe7c;
+    --branch-4: #c3a0c8;
+    --branch-5: #7cc0bf;
+    --branch-6: #d9b073;
 
     --error: #dd8b80;
     --user: #b9c9bd;
@@ -159,15 +176,20 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
   cursor: pointer;
   padding: 5px 6px 5px calc(9px + var(--depth, 0) * 13px);
 }
+/* Цвет ветки держится через все её появления: строка в дереве, чип в
+   полосе «смотрим», шов в ленте, отбивка такта. Неактивная ветка красит
+   им только полоску слева, активная — ещё и имя. */
+.tree-branch { border-left-color: color-mix(in srgb, var(--btone, var(--rule)) 45%, transparent); }
 .tree-branch b { font: 600 13.5px/1.3 var(--serif); }
 .tree-branch span { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
 .tree-branch:hover { background: var(--sheet); }
 .tree-branch.on {
-  border-left-color: var(--full);
-  background: var(--sheet);
+  border-left-color: var(--btone, var(--full));
+  background: color-mix(in srgb, var(--btone, var(--full)) 10%, var(--sheet));
   cursor: default;
 }
-.tree-branch.on b::after { content: " \25CF"; color: var(--full); font-size: 9px; vertical-align: middle; }
+.tree-branch.on b { color: var(--btone, var(--ink)); }
+.tree-branch.on b::after { content: " \25CF"; color: var(--btone, var(--full)); font-size: 9px; vertical-align: middle; }
 
 /* У точки две роли, и у каждой свой орган: по строке переходят к месту в
    ленте, кнопкой рядом отводят ветку. Одним кликом их не совместить -
@@ -267,7 +289,6 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
 /* Шапки дорожек прилипают к верху: шкалы нужны на глазах всё время,
    пока читаешь ленту, иначе сравнивать нечего с чем. */
 .lane-heads {
-  border-top: 1px solid var(--ink);
   border-bottom: 1px solid var(--ink);
   position: sticky;
   top: 0;
@@ -275,23 +296,75 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
   z-index: 2;
 }
 
+/* Дорожка красится своей стратегией целиком: полоса сверху, подложка на
+   всю колонку и цветное имя. Раньше цвет был только у имени и шкалы, и
+   три дорожки читались как одна таблица с разными числами. */
 .lane-head {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
   padding: 12px 14px 12px 0;
   border-left: 1px solid var(--rule);
+  border-top: 3px solid var(--tone, var(--ink));
+  background: color-mix(in srgb, var(--tone, var(--paper)) 7%, var(--paper));
   padding-left: 14px;
   min-width: 0;
 }
-.lane-head:first-child { border-left: 0; padding-left: 0; }
+.lane-head:first-child { border-left: 0; }
 
 .lane-name {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
   font: 600 15px/1.25 var(--serif);
   color: var(--tone, var(--ink));
-  margin: 0 0 2px;
+  margin: 0 0 6px;
 }
-.lane-rule { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.mode-glyph {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--tone, var(--ink));
+  border: 1px solid currentColor;
+  padding: 2px 4px;
+}
+.lane-rule { font-size: 12px; color: var(--muted); line-height: 1.4; margin: 6px 0 0; }
+/* Что из истории дошло до модели на последнем ходе — репликами, а не
+   токенами: разницу стратегий меряют тем же, чем меряют разговор. */
+.lane-seen {
+  margin: 6px 0 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--tone, var(--muted));
+}
+
+/* Полоска состава: из чего сложится запрос к модели. Заштрихованная
+   часть — то, что до модели не дойдёт. */
+.mode-strip-wrap { margin-top: 2px; }
+/* В шапке дорожки полоска — подпись, а не диаграмма во всю ширину: на
+   одиночном диалоге колонка широкая, и растянутая полоска врала бы
+   масштабом. */
+.lane-head .mode-strip-wrap { max-width: 340px; }
+.mode-strip { display: flex; height: 9px; border: 1px solid var(--rule); background: var(--sheet); }
+.mode-seg { display: block; }
+.mode-seg.win { background: color-mix(in srgb, var(--tone, var(--ink)) 70%, transparent); }
+.mode-seg.card { background: var(--tone, var(--ink)); }
+.mode-seg.cut {
+  background: repeating-linear-gradient(135deg,
+    var(--rule) 0 2px, transparent 2px 5px);
+}
+.mode-strip-labels { display: flex; margin-top: 3px; }
+.mode-label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.2;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mode-label.card, .mode-label.win { color: var(--tone, var(--ink)); }
 .lane-figures { margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .lane-figures b { color: var(--ink); font-weight: 600; }
 .lane-figures span { display: block; }
@@ -367,11 +440,25 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
   background: var(--sheet);
   border-left: 3px solid var(--ink);
 }
+/* Отбивка такта в цвете ветки: в пути ветки по ней видно, где кончилась
+   унаследованная часть, в плоских лентах — чей это вариант. */
+.beat-q.branched { border-left-color: var(--btone, var(--ink)); border-left-width: 5px; }
 .beat-num {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--muted);
   min-width: 2.5ch;
+}
+/* Имя ветки у такта — только в плоских лентах: в пути ветки оно стояло
+   бы у каждого такта и не значило бы ничего. */
+.beat-branch {
+  margin-left: auto;
+  align-self: center;
+  padding: 2px 8px;
+  font: 11px/1.4 var(--mono);
+  color: var(--btone, var(--muted));
+  border: 1px solid color-mix(in srgb, var(--btone, var(--rule)) 45%, transparent);
+  white-space: nowrap;
 }
 .beat-text {
   font: 600 19px/1.4 var(--serif);
@@ -380,13 +467,27 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
   margin: 0;
 }
 
+/* Колонка дорожки в ленте красится тем же тоном, что и её шапка: на
+   длинной ленте шапка уезжает, а вопрос «чей это ответ» остаётся. */
 .lane-turn {
   border-left: 1px solid var(--rule);
-  padding: 0 14px 18px;
+  border-top: 2px solid color-mix(in srgb, var(--tone, var(--rule)) 55%, transparent);
+  background: color-mix(in srgb, var(--tone, var(--paper)) 4%, transparent);
+  padding: 8px 14px 18px;
   min-width: 0;
 }
-.lane-turn:first-child { border-left: 0; padding-left: 0; }
-.lane-mark { display: none; }
+.lane-turn:first-child { border-left: 0; }
+/* Подпись дорожки в самой ячейке: короткая, в тоне стратегии. */
+.lane-mark {
+  display: inline-block;
+  margin: 0 0 6px;
+  padding: 1px 6px;
+  font: 600 10.5px/1.5 var(--mono);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--tone, var(--ink));
+  border: 1px solid color-mix(in srgb, var(--tone, var(--rule)) 45%, transparent);
+}
 .lane-turn .status {
   font-family: var(--mono);
   font-size: 11.5px;
@@ -422,7 +523,10 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 3.5em;
-  background: linear-gradient(to bottom, transparent, var(--paper));
+  /* Растушёвка уходит в подложку самой дорожки, а она подкрашена тоном
+     стратегии: иначе под обрезанным ответом виден чужой цвет. */
+  background: linear-gradient(to bottom, transparent,
+    color-mix(in srgb, var(--tone, var(--paper)) 4%, var(--paper)));
 }
 /* «Показать целиком» — текстовая команда, а не ещё одна рамка: в трёх
    дорожках сразу рамки перебивают сами ответы. */
@@ -510,15 +614,80 @@ details.card > summary { cursor: pointer; font-family: var(--mono); font-size: 1
 /* Стратегии стоят столбиком: на пульте они читаются как список правил,
    а не как ряд вкладок. */
 .switcher-buttons { display: flex; flex-direction: column; gap: 0; }
-.switcher-buttons button { border-bottom-width: 0; text-align: left; }
-.switcher-buttons button:last-child { border-bottom-width: 1px; }
-.switcher-buttons button.on {
+/* Кнопка стратегии — не надпись, а её портрет: знак, имя и полоска
+   состава. Выбранная светится тоном, остальные держат тон только в
+   знаке и полоске. */
+.mode-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--rule);
+  border-bottom-width: 0;
+  border-left: 3px solid color-mix(in srgb, var(--tone, var(--rule)) 40%, transparent);
+  color: var(--ink);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.mode-button:last-child { border-bottom-width: 1px; }
+.mode-button:hover { background: var(--sheet); }
+.mode-button:disabled { opacity: .45; cursor: default; }
+.mode-title { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.mode-button.on {
   border-color: var(--tone, var(--ink));
+  border-left-width: 3px;
   color: var(--tone, var(--ink));
-  background: var(--sheet);
+  background: color-mix(in srgb, var(--tone, var(--ink)) 8%, var(--sheet));
   font-weight: 600;
 }
 #switcher-rule { margin-top: 8px; font-size: 11.5px; line-height: 1.45; }
+
+/* ---------- Полоса «смотрим»: какая версия разговора на экране ---------- */
+
+/* Дерево на пульте отвечает «как устроен разговор», эта полоса — «что я
+   сейчас читаю и куда уйдёт следующая реплика». Второй вопрос возникает
+   над лентой, поэтому и ответ стоит здесь, а не на пульте. */
+.branchbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 9px 0 10px;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.branchbar[hidden] { display: none; }
+.branchbar-label {
+  font: 600 11px/1.4 var(--mono);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.branch-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.branch-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--btone, var(--rule)) 40%, transparent);
+  border-left: 4px solid var(--btone, var(--rule));
+  color: var(--ink);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.branch-chip b { font: 600 13px/1.3 var(--serif); }
+.branch-chip span { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.branch-chip:hover { border-color: var(--btone, var(--ink)); }
+.branch-chip.on {
+  background: color-mix(in srgb, var(--btone, var(--ink)) 12%, var(--sheet));
+  border-color: var(--btone, var(--ink));
+  cursor: default;
+}
+.branch-chip.on b { color: var(--btone, var(--ink)); }
+.branch-chip.on b::after { content: " \25CF"; font-size: 9px; vertical-align: middle; }
+.branch-chip:disabled { opacity: .5; cursor: default; }
+.branchbar-note { font-size: 11.5px; color: var(--muted); flex: 1 1 22ch; min-width: 0; }
 
 /* ---------- Дерево против линейного диалога ---------- */
 
@@ -530,6 +699,9 @@ details.card > summary { cursor: pointer; font-family: var(--mono); font-size: 1
 .view-tabs button { border-right-width: 0; }
 .view-tabs button:last-child { border-right-width: 1px; }
 .view-tabs button.on { border-color: var(--ink); background: var(--sheet); font-weight: 600; }
+/* Вкладка пути красится цветом той ветки, чей путь покажет: вкладки и
+   полоса «смотрим» говорят об одном и том же и должны совпадать. */
+#view-branch { border-left: 4px solid var(--btone, var(--rule)); }
 .view-note {
   margin: 9px 0 0;
   font-size: 12.5px;
@@ -548,11 +720,27 @@ details.card > summary { cursor: pointer; font-family: var(--mono); font-size: 1
   border-left: 3px solid var(--facts);
   background: var(--sheet);
 }
+/* Шов ветки красится её цветом — тем же, каким она подписана в полосе
+   «смотрим» и в дереве на пульте. */
+.seam.branch { border-left-color: var(--btone, var(--facts)); }
 .seam.head {
   margin-top: 20px;
-  border-left-color: var(--ink);
   color: var(--ink);
   font-weight: 600;
+}
+.seam.branch.head {
+  background: color-mix(in srgb, var(--btone, var(--ink)) 10%, var(--sheet));
+  color: var(--btone, var(--ink));
+}
+/* Переключение — не заголовок куска, а событие разговора: здесь человек
+   взял и ушёл в другой вариант. Поэтому строка не подпись, а отметка. */
+.seam.switched {
+  margin-top: 22px;
+  background: color-mix(in srgb, var(--btone, var(--ink)) 12%, var(--sheet));
+  border-left-width: 4px;
+  color: var(--btone, var(--ink));
+  font-weight: 600;
+  letter-spacing: .01em;
 }
 /* Шов смены стратегии красится цветом той стратегии, на которую перешли:
    он же стоит у неё на пульте и в шапке дорожки. */
@@ -647,6 +835,32 @@ dialog::backdrop { background: rgba(20, 26, 21, .5); }
 .agent-choice .about { grid-column: 2; font-size: 13px; color: var(--muted); }
 .single-only { border-top: 1px solid var(--rule-soft); margin-top: 12px; padding-top: 4px; }
 .file-tabs { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; }
+.file-tabs[hidden] { display: none; }
+
+/* Карточка фактов целиком: то же содержимое, что под последним ходом, но
+   с ответом на вопрос «откуда это взялось» — по ходам, в порядке
+   появления. */
+.facts-panel { max-height: 66vh; overflow: auto; }
+.facts-panel .card-table { margin-top: 14px; }
+.facts-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.facts-figures b { color: var(--tone, var(--ink)); font-weight: 600; }
+.facts-growth { margin-top: 18px; border-top: 1px solid var(--rule-soft); padding-top: 10px; }
+.facts-growth h3 { font: 600 14px/1.3 var(--serif); margin: 0 0 8px; }
+.growth-row { display: grid; grid-template-columns: 6em 1fr; gap: 8px; padding: 3px 0; }
+.growth-turn { font-family: var(--mono); font-size: 11.5px; color: var(--tone, var(--muted)); }
+.growth-keys { font-size: 13px; }
+.facts-branches { margin-top: 14px; }
 .file {
   background: var(--sheet);
   border: 1px solid var(--rule);
@@ -663,12 +877,6 @@ dialog::backdrop { background: rgba(20, 26, 21, .5); }
 
 @media (max-width: 900px) {
   .lane-heads, .beat-lanes { grid-template-columns: 1fr; }
-  .lane-head, .lane-turn { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 12px; }
-  .lane-head:first-child, .lane-turn:first-child { border-top: 0; }
-  .lane-mark {
-    display: block;
-    margin: 0 0 4px;
-    font: 600 13px/1.2 var(--serif);
-    color: var(--tone, var(--ink));
-  }
+  .lane-head, .lane-turn { border-left: 0; padding-left: 10px; padding-top: 12px; }
+  .lane-head, .lane-turn { border-top: 3px solid var(--tone, var(--rule)); }
 }
