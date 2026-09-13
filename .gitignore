@@ -1,0 +1,13 @@
+# Секреты
+.env.local
+*.env.local
+
+# Сборка
+/bin/
+*.exe
+*.test
+
+# ОС и редакторы
+Thumbs.db
+.DS_Store
+.idea/
