@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Три стратегии одного контекста</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/vendor/marked/marked.min.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-text">
+      <h1>Три стратегии одного контекста</h1>
+      <p class="lead">
+        Модель получает историю разговора заново на каждом ходе и платит за неё каждый раз.
+        Стратегия решает, что именно туда попадёт: весь разговор, только последние сообщения
+        или карточка фактов вместе с ними. Четвёртая стратегия — ветки: разговор можно
+        отметить точкой, развести от неё два продолжения и ходить между ними.
+      </p>
+    </div>
+    <dl class="readings">
+      <div><dt>Модель</dt><dd id="model-name">—</dd></div>
+      <div><dt>Настройки</dt><dd id="strategy-note">—</dd></div>
+      <div><dt>Хранилище</dt><dd id="history-dir">—</dd></div>
+      <div><dt>Сервер запущен</dt><dd id="server-started">—</dd></div>
+    </dl>
+  </header>
+
+  <main class="bench">
+    <!-- Слева журнал наблюдений: прошлые стенды и одиночные диалоги.
+         В центре — сам стенд: шапки дорожек со шкалами контекста, дерево
+         веток, лента тактов и поле вопроса. -->
+    <aside class="ledger">
+      <div class="ledger-head">
+        <h2>Журнал</h2>
+        <button type="button" id="new-button" class="ghost">Новый</button>
+      </div>
+      <ul class="ledger-list" id="conversations"></ul>
+      <p class="empty" id="conversations-empty" hidden>Пока пусто. Задайте первый вопрос.</p>
+    </aside>
+
+    <section class="stage">
+      <div class="stage-head">
+        <h2 id="stage-title">Новый стенд</h2>
+        <span class="stage-note" id="stage-note">вопрос уйдёт трём дорожкам сразу</span>
+        <div class="stage-actions">
+          <button type="button" id="file-button" class="ghost" hidden>Файл на диске</button>
+          <button type="button" id="delete-button" class="ghost danger" hidden>Удалить</button>
+        </div>
+      </div>
+
+      <!-- Переключатель стратегий одиночного диалога: сообщения остаются
+           на месте, меняется только то, что из них уходит модели. -->
+      <div class="switcher" id="switcher" hidden>
+        <span class="switcher-label">Стратегия</span>
+        <div class="switcher-buttons" id="switcher-buttons"></div>
+        <span class="switcher-rule" id="switcher-rule"></span>
+      </div>
+
+      <!-- Ветки: дерево диалога, точки сохранения и переключение между
+           продолжениями. -->
+      <div class="branches" id="branches" hidden>
+        <div class="branches-head">
+          <span class="switcher-label">Ветки</span>
+          <div class="branches-actions">
+            <button type="button" id="mark-button" class="ghost">Поставить точку</button>
+            <button type="button" id="fork-button" class="ghost">Ветка отсюда</button>
+          </div>
+        </div>
+        <div class="branch-list" id="branch-list"></div>
+        <div class="checkpoint-list" id="checkpoint-list"></div>
+      </div>
+
+      <!-- Шапки дорожек: имя стратегии, шкала занятого контекста и итоги.
+           Шкалы стоят рядом намеренно — их сравнивают взглядом. -->
+      <div class="lane-heads" id="lane-heads"></div>
+
+      <!-- Лента тактов: вопрос во всю ширину, под ним ответы дорожек. -->
+      <div class="tape" id="tape">
+        <p class="empty" id="tape-empty">
+          Начните разбор задачи — например: «Меня зовут Марина, я продакт в сети пекарен,
+          нужна система учёта списаний». Через десяток реплик спросите, какой у вас бюджет:
+          дорожки ответят по-разному.
+        </p>
+      </div>
+
+      <form class="ask" id="composer">
+        <textarea id="text" rows="2" spellcheck="true"
+          placeholder="Реплика в разбор"></textarea>
+        <div class="ask-controls">
+          <span class="hint" id="ask-hint">Ctrl+Enter — отправить. Ход идёт на сервере: страницу можно перезагрузить.</span>
+          <button type="submit" id="send-button" class="solid">Отправить</button>
+        </div>
+        <p class="error" id="error" hidden></p>
+      </form>
+    </section>
+  </main>
+
+  <!-- Что заводим: стенд из трёх дорожек или один диалог. -->
+  <dialog id="new-dialog">
+    <div class="dialog-head">
+      <h2>Что заводим</h2>
+      <button type="button" id="new-close" class="ghost">Отмена</button>
+    </div>
+    <p class="hint">Стенд сравнивает стратегии между собой: один вопрос уходит трём диалогам сразу. Одиночный диалог — место для веток: в нём можно поставить точку и развести продолжения.</p>
+    <div class="agent-choice" id="kind-choice"></div>
+    <p class="hint">Тип агента задаётся один раз и хранится в диалоге.</p>
+    <div class="agent-choice" id="agent-choice"></div>
+    <div class="single-only" id="single-strategy">
+      <p class="hint">Стратегия одиночного диалога — её можно будет переключить и потом.</p>
+      <div class="agent-choice" id="strategy-choice"></div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="new-create" class="solid">Создать</button>
+    </div>
+  </dialog>
+
+  <dialog id="file-dialog">
+    <div class="dialog-head">
+      <h2>Файл диалога на диске</h2>
+      <button type="button" id="file-close" class="ghost">Закрыть</button>
+    </div>
+    <div class="file-tabs" id="file-tabs"></div>
+    <p class="hint" id="file-path">—</p>
+    <pre class="file" id="file-body"></pre>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

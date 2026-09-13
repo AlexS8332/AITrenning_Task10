@@ -1,3 +1,3 @@
-module aitr/10-aitrenning-task10
+module github.com/AlexS8332/AITrenning_Task10
 
-go 1.27.0
+go 1.22

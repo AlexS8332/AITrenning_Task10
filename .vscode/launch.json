@@ -1,0 +1,47 @@
+{
+  // Приложение — локальный сервер: интерфейс открывается в браузере, а в
+  // терминале остаются логи и Ctrl+C. Debug Console для этого не годится:
+  // в ней не работает остановка по сигналу.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Запустить сервер (откроет браузер)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Запустить сервер без браузера",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}",
+      "args": ["-open=false"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Прогнать опыт (пишет examples/report.md)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}",
+      "args": ["-report", "examples/report.md"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Запустить на свободном порту",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}",
+      "args": ["-addr", "127.0.0.1:0"],
+      "console": "integratedTerminal"
+    }
+  ]
+}

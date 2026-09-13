@@ -1,0 +1,551 @@
+/* Лист полевого журнала: бумага с зеленоватым уклоном, чернила цвета
+   хвои, тонкие линейки вместо карточек и теней. Каждая дорожка памяти
+   красится своим цветом — он же красит её шкалу, числа и журнал. */
+:root {
+  --paper: #edefe7;
+  --sheet: #f6f7f2;
+  --ink: #1f2a24;
+  --muted: #6b7a6f;
+  --rule: #cfd5c6;
+  --rule-soft: #e0e4d9;
+
+  --full: #2b5f4e;
+  --window: #5f7490;
+  --facts: #9a7018;
+
+  --error: #7e2e24;
+  --user: #33463c;
+
+  --serif: Cambria, "PT Serif", "Times New Roman", Georgia, serif;
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: Consolas, "Cascadia Mono", ui-monospace, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #151a16;
+    --sheet: #1b211c;
+    --ink: #e2e7dc;
+    --muted: #93a094;
+    --rule: #333d34;
+    --rule-soft: #262e27;
+
+    --full: #74b79c;
+    --window: #9db2ce;
+    --facts: #d6ad55;
+
+    --error: #dd8b80;
+    --user: #b9c9bd;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 28px 24px 40px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.55 var(--sans);
+}
+
+.masthead, .bench { max-width: 1640px; margin: 0 auto; }
+
+/* ---------- Шапка ---------- */
+
+.masthead {
+  display: flex;
+  gap: 40px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: 18px;
+}
+
+h1 {
+  font: 600 30px/1.15 var(--serif);
+  letter-spacing: -0.015em;
+  margin: 0 0 8px;
+}
+
+.lead {
+  margin: 0;
+  max-width: 68ch;
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.readings { display: flex; gap: 26px; margin: 0; flex-wrap: wrap; }
+.readings div { display: flex; flex-direction: column; gap: 2px; }
+.readings dt { font-size: 12px; color: var(--muted); }
+.readings dd { margin: 0; font-family: var(--mono); font-size: 12.5px; }
+
+/* ---------- Раскладка стенда ---------- */
+
+.bench {
+  display: grid;
+  grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .bench { grid-template-columns: 1fr; }
+  .ledger { order: 2; }
+}
+
+/* ---------- Журнал слева ---------- */
+
+.ledger { border-right: 1px solid var(--rule); padding-right: 18px; min-width: 0; }
+@media (max-width: 1100px) { .ledger { border-right: 0; padding-right: 0; border-top: 1px solid var(--rule); padding-top: 14px; } }
+
+.ledger-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
+
+.ledger-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ledger-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  padding: 10px 4px;
+  border-top: 1px solid var(--rule-soft);
+  cursor: pointer;
+}
+.ledger-item:last-child { border-bottom: 1px solid var(--rule-soft); }
+.ledger-item.active { background: var(--sheet); box-shadow: -4px 0 0 0 var(--ink); }
+.ledger-item .title {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ledger-item .meta { grid-column: 1 / -1; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.ledger-item .kind { font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+.ledger-item .drop {
+  border: 0; background: none; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 0 2px; visibility: hidden;
+}
+.ledger-item:hover .drop, .ledger-item:focus-within .drop { visibility: visible; }
+.ledger-item .drop:hover { color: var(--error); }
+
+/* ---------- Стенд ---------- */
+
+.stage { min-width: 0; }
+
+.stage-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+}
+.stage-head h2 { font-size: 19px; }
+.stage-note { color: var(--muted); font-size: 13px; }
+.stage-actions { margin-left: auto; display: flex; gap: 8px; }
+
+/* Шапки дорожек. Колонки задаются переменной --lanes: одиночный диалог
+   занимает всю ширину, стенд делится на три. */
+.lane-heads, .beat-lanes {
+  display: grid;
+  grid-template-columns: repeat(var(--lanes, 3), minmax(0, 1fr));
+}
+/* Шапки дорожек прилипают к верху: шкалы нужны на глазах всё время,
+   пока читаешь ленту, иначе сравнивать нечего с чем. */
+.lane-heads {
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 2;
+}
+
+.lane-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 12px 14px 12px 0;
+  border-left: 1px solid var(--rule);
+  padding-left: 14px;
+  min-width: 0;
+}
+.lane-head:first-child { border-left: 0; padding-left: 0; }
+
+.lane-name {
+  font: 600 15px/1.25 var(--serif);
+  color: var(--tone, var(--ink));
+  margin: 0 0 2px;
+}
+.lane-rule { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.lane-figures { margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.lane-figures b { color: var(--ink); font-weight: 600; }
+.lane-figures span { display: block; }
+
+/* Шкала контекста: сколько занято на последнем ходе. Столбик растёт
+   снизу, пунктир — уровень полной истории, то есть то, сколько ушло бы
+   модели без стратегии; второй пунктир, точками, — сколько ушло бы без
+   ветвления, одной лентой. */
+.gauge {
+  position: relative;
+  width: 22px;
+  height: 104px;
+  border: 1px solid var(--rule);
+  background: var(--sheet);
+  align-self: end;
+}
+.gauge .fill { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column-reverse; }
+.gauge .seg { display: block; width: 100%; }
+.gauge .seg.base { background: var(--tone, var(--ink)); opacity: .3; }
+.gauge .seg.history { background: var(--tone, var(--ink)); opacity: .62; }
+.gauge .seg.facts { background: var(--tone, var(--ink)); opacity: 1; }
+.gauge .ghost-line {
+  position: absolute; left: -3px; right: -3px;
+  border-top: 1px dashed var(--muted);
+}
+.gauge .ghost-line.linear { border-top-style: dotted; opacity: .7; }
+.gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.gauge-value { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* ---------- Лента тактов ---------- */
+
+.tape { border-bottom: 1px solid var(--ink); }
+
+.beat { border-bottom: 1px solid var(--rule-soft); }
+.beat:last-child { border-bottom: 0; }
+
+/* Вопрос — это такт всей ленты: он один на три дорожки, и по нему в ней
+   ориентируются. Поэтому он не реплика в общем потоке, а полоса: своя
+   подложка, отбивка слева и кегль крупнее ответов. */
+.beat-q {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  padding: 14px 16px;
+  margin: 18px 0 14px;
+  background: var(--sheet);
+  border-left: 3px solid var(--ink);
+}
+.beat-num {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 2.5ch;
+}
+.beat-text {
+  font: 600 19px/1.4 var(--serif);
+  color: var(--ink);
+  max-width: 72ch;
+  margin: 0;
+}
+
+.lane-turn {
+  border-left: 1px solid var(--rule);
+  padding: 0 14px 18px;
+  min-width: 0;
+}
+.lane-turn:first-child { border-left: 0; padding-left: 0; }
+.lane-mark { display: none; }
+.lane-turn .status {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--tone, var(--muted));
+  margin-bottom: 6px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.lane-turn .status .dot { width: 7px; height: 7px; background: var(--tone, var(--muted)); display: inline-block; }
+.lane-turn .status .dot.running { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lane-turn .status .dot.running { animation: none; opacity: .6; } }
+
+.answer { font-family: var(--serif); font-size: 15px; line-height: 1.62; }
+.answer > *:first-child { margin-top: 0; }
+.answer > *:last-child { margin-bottom: 0; }
+.answer h1, .answer h2, .answer h3, .answer h4 { font-size: 15.5px; margin: 12px 0 6px; }
+.answer p, .answer ul, .answer ol { margin: 8px 0; }
+.answer ul, .answer ol { padding-left: 20px; }
+.answer code { font-family: var(--mono); font-size: 88%; }
+.answer pre { background: var(--sheet); border: 1px solid var(--rule-soft); padding: 8px 10px; overflow-x: auto; }
+.answer table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13.5px; }
+.answer th, .answer td { border: 1px solid var(--rule); padding: 3px 7px; text-align: left; }
+.answer blockquote { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--rule); color: var(--muted); }
+.answer .failed { color: var(--error); font-family: var(--sans); font-size: 13.5px; }
+
+/* Длинный ответ подрезается: три ответа рядом сравнивают по началу, а
+   целиком читают по требованию. */
+.answer.clipped { max-height: 20em; overflow: hidden; position: relative; }
+.answer.clipped::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3.5em;
+  background: linear-gradient(to bottom, transparent, var(--paper));
+}
+/* «Показать целиком» — текстовая команда, а не ещё одна рамка: в трёх
+   дорожках сразу рамки перебивают сами ответы. */
+.unclip {
+  margin-top: 2px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--tone, var(--ink));
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.turn-figures {
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+.turn-figures b { color: var(--ink); font-weight: 600; }
+
+details.trail { margin-top: 8px; }
+details.trail > summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+details.trail > summary:hover { color: var(--tone, var(--ink)); }
+.trail-body { margin-top: 6px; border-left: 2px solid var(--rule-soft); padding-left: 10px; }
+.trail-item { display: grid; grid-template-columns: 3.4em 1fr; gap: 6px; padding: 3px 0; font-size: 12px; }
+.trail-item .at { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.trail-item .what { min-width: 0; }
+.trail-item .kind { font-family: var(--mono); font-size: 11px; color: var(--tone, var(--muted)); margin-right: 6px; }
+.trail-item .numbers { font-family: var(--mono); font-size: 11px; color: var(--muted); display: block; }
+.trail-item pre {
+  margin: 4px 0 0;
+  background: var(--sheet);
+  border: 1px solid var(--rule-soft);
+  padding: 6px 8px;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.trail-item.err .kind, .trail-item.err .what { color: var(--error); }
+
+/* Карточка фактов дорожки: то, что модель видит вместо начала
+   разговора. Таблица, а не текст: карточка — это ключи и значения, и
+   читать её надо построчно. */
+details.card { margin-top: 10px; border-top: 1px solid var(--rule-soft); padding-top: 8px; }
+details.card > summary { cursor: pointer; font-family: var(--mono); font-size: 11.5px; color: var(--tone, var(--muted)); }
+.card-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
+.card-table th {
+  text-align: left;
+  font: 600 12.5px/1.4 var(--mono);
+  color: var(--tone, var(--ink));
+  padding: 3px 8px 3px 0;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.card-table td { padding: 3px 0; vertical-align: top; font-family: var(--serif); }
+.card-table tr { border-top: 1px solid var(--rule-soft); }
+.card-table tr:first-child { border-top: 0; }
+.card-table .when {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 8px;
+}
+
+/* ---------- Переключатель стратегий ---------- */
+
+/* Стратегию видно и меняют в одно касание: это главный орган управления
+   задания, и прятать его в настройки нельзя. */
+.switcher {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.switcher-label {
+  font: 600 12px/1.4 var(--sans);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.switcher-buttons { display: flex; gap: 0; }
+.switcher-buttons button { border-right-width: 0; }
+.switcher-buttons button:last-child { border-right-width: 1px; }
+.switcher-buttons button.on {
+  border-color: var(--tone, var(--ink));
+  color: var(--tone, var(--ink));
+  background: var(--sheet);
+  font-weight: 600;
+}
+.switcher-rule { font-size: 12.5px; color: var(--muted); }
+
+/* ---------- Ветки ---------- */
+
+.branches { padding: 10px 0; border-bottom: 1px solid var(--rule-soft); }
+.branches-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.branches-actions { display: flex; gap: 6px; }
+.branch-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+/* Ветка — это выбор пути, а не вкладка: активная отмечена линией слева,
+   как отметка на полях журнала. */
+.branch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--rule);
+  border-left-width: 3px;
+  color: var(--ink);
+  padding: 6px 12px;
+  cursor: pointer;
+  min-width: 150px;
+}
+.branch:hover { border-color: var(--ink); }
+.branch.on { border-left-color: var(--full); background: var(--sheet); cursor: default; }
+.branch b { font: 600 13.5px/1.3 var(--serif); }
+.branch span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.branch:disabled { opacity: .5; cursor: default; }
+
+.checkpoint-list { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; margin-top: 8px; }
+.checkpoint {
+  background: none;
+  border: 1px dashed var(--rule);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.checkpoint:hover { border-color: var(--ink); color: var(--ink); }
+
+/* Шов ленты: с этого места разговор идёт в другой ветке. */
+.seam {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 8px 0 8px 14px;
+  border-left: 3px solid var(--facts);
+  background: var(--sheet);
+}
+
+/* ---------- Поле вопроса ---------- */
+
+.ask { margin-top: 18px; }
+.ask textarea {
+  width: 100%;
+  border: 1px solid var(--rule);
+  background: var(--sheet);
+  color: var(--ink);
+  font: 16px/1.5 var(--serif);
+  padding: 12px 14px;
+  resize: vertical;
+}
+.ask textarea:focus-visible { outline: 2px solid var(--full); outline-offset: 1px; }
+.ask-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; }
+.hint { color: var(--muted); font-size: 12.5px; margin: 0; }
+.error { color: var(--error); font-size: 13px; margin: 10px 0 0; }
+.empty { color: var(--muted); font-size: 14px; font-family: var(--serif); margin: 22px 0; max-width: 62ch; }
+
+/* ---------- Кнопки ---------- */
+
+button { font: inherit; }
+.solid {
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 9px 20px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.solid:hover { background: var(--full); border-color: var(--full); }
+.solid:disabled { opacity: .45; cursor: default; }
+.ghost {
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  padding: 5px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ghost:hover { border-color: var(--ink); }
+.ghost.danger:hover { border-color: var(--error); color: var(--error); }
+.ghost.on { border-color: var(--ink); background: var(--sheet); }
+:focus-visible { outline: 2px solid var(--full); outline-offset: 2px; }
+
+/* ---------- Диалоговые окна ---------- */
+
+dialog {
+  width: min(900px, 92vw);
+  max-height: 84vh;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 20px 22px;
+}
+dialog::backdrop { background: rgba(20, 26, 21, .5); }
+.dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 8px; }
+.dialog-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+.agent-choice { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.agent-choice label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  border: 1px solid var(--rule);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.agent-choice label:hover { border-color: var(--ink); }
+.agent-choice .name { font-family: var(--serif); font-weight: 600; }
+.agent-choice .about { grid-column: 2; font-size: 13px; color: var(--muted); }
+.single-only { border-top: 1px solid var(--rule-soft); margin-top: 12px; padding-top: 4px; }
+.file-tabs { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; }
+.file {
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  padding: 10px 12px;
+  max-height: 62vh;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Узкий экран: дорожки в столбик ---------- */
+
+@media (max-width: 900px) {
+  .lane-heads, .beat-lanes { grid-template-columns: 1fr; }
+  .lane-head, .lane-turn { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 12px; }
+  .lane-head:first-child, .lane-turn:first-child { border-top: 0; }
+  .lane-mark {
+    display: block;
+    margin: 0 0 4px;
+    font: 600 13px/1.2 var(--serif);
+    color: var(--tone, var(--ink));
+  }
+}
