@@ -52,7 +52,7 @@ const el = {};
 for (const id of [
   'model-name', 'strategy-note', 'history-dir', 'server-started',
   'new-button', 'conversations', 'conversations-empty',
-  'stage-title', 'stage-note', 'file-button', 'delete-button',
+  'stage-title', 'stage-note', 'stand-button', 'file-button', 'delete-button',
   'switcher', 'switcher-buttons', 'switcher-rule',
   'branches', 'branch-list', 'checkpoint-list', 'mark-button', 'fork-button',
   'lane-heads', 'tape', 'tape-empty',
@@ -128,6 +128,10 @@ async function init() {
   el.fileButton.addEventListener('click', showFiles);
   el.fileClose.addEventListener('click', () => el.fileDialog.close());
   el.deleteButton.addEventListener('click', dropCurrent);
+  el.standButton.addEventListener('click', () => {
+    const lane = state.view && state.view.lanes[0];
+    if (lane && lane.group) openComparison(lane.group);
+  });
   el.markButton.addEventListener('click', markCheckpoint);
   el.forkButton.addEventListener('click', () => forkFrom(''));
 
@@ -246,6 +250,7 @@ function openBlank() {
   el.stageNote.textContent = single
     ? 'стратегия ' + ((MODES[state.draftMode] || {}).name || state.draftMode) + ', ветвление доступно после первого хода'
     : 'вопрос уйдёт трём дорожкам сразу: вся история, окно, факты';
+  el.standButton.hidden = true;
   el.fileButton.hidden = true;
   el.deleteButton.hidden = true;
   el.switcher.hidden = true;
@@ -307,6 +312,10 @@ function setView(view) {
     note.push(plural(lane.branches, 'ветка', 'ветки', 'веток') + ', сейчас «' + (lane.branchName || '—') + '»');
   }
   el.stageNote.textContent = note.filter(Boolean).join(' · ');
+  // Дорожку стенда можно открыть отдельно — тогда у неё появляются ветки
+  // и переключатель. Обратная дорога нужна там же: иначе стенд ищется
+  // только в журнале слева или по адресу.
+  el.standButton.hidden = !(view.kind === 'single' && lane.group);
   el.fileButton.hidden = false;
   el.deleteButton.hidden = false;
   el.tapeEmpty.hidden = true;
@@ -661,6 +670,21 @@ function renderLaneHeads(view) {
         plural(lane.branches, 'ветки', 'веток', 'веток')));
     }
     left.appendChild(figures);
+
+    // Дорожка стенда — настоящий диалог со своим файлом, и её можно
+    // открыть отдельно: ветвление и переключатель стратегий работают
+    // только в одиночном виде, а начатый на стенде разговор бросать
+    // ради них не хочется.
+    if (view.kind === 'comparison') {
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'lane-open';
+      open.textContent = 'открыть отдельно →';
+      open.title = 'Открыть эту дорожку как одиночный диалог: там доступны ветки и переключатель стратегий. ' +
+        'Ходы, сделанные отдельно, в остальные дорожки не попадут — стенд перестанет идти в ногу.';
+      open.addEventListener('click', () => openSingle(lane.id));
+      left.appendChild(open);
+    }
     head.appendChild(left);
 
     const turns = laneTurns(lane);
