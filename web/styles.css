@@ -554,6 +554,9 @@ details.card > summary { cursor: pointer; font-family: var(--mono); font-size: 1
   color: var(--ink);
   font-weight: 600;
 }
+/* Шов смены стратегии красится цветом той стратегии, на которую перешли:
+   он же стоит у неё на пульте и в шапке дорожки. */
+.seam.mode { border-left-color: var(--tone, var(--window)); color: var(--tone, var(--ink)); }
 
 /* ---------- Поле вопроса ---------- */
 

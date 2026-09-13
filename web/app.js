@@ -951,7 +951,8 @@ function renderTape(view) {
   // выглядел бы разговор, если бы ветвиться было нельзя. Карточку фактов
   // под последним ходом в этом режиме не показываем — она принадлежит
   // текущей ветке, а лента к ветке не привязана.
-  const linear = view.kind === 'single' && state.tapeMode === 'linear';
+  const single = view.kind === 'single';
+  const linear = single && state.tapeMode === 'linear';
   const lanes = linear
     ? [(view.lanes[0].linear || []).map((t) => ({ ...t, events: [], live: false }))]
     : view.lanes.map(laneTurns);
@@ -964,13 +965,14 @@ function renderTape(view) {
   }
 
   let shownBranch = null;
+  let shownMode = null;
   for (let i = 0; i < beats; i++) {
     const asked = lanes.map((turns) => turns[i]).find(Boolean);
 
     // В одиночном диалоге лента — это путь текущей ветки, и место
     // ветвления надо показать: дальше идут ходы, которых в соседней ветке
     // нет.
-    if (view.kind === 'single' && asked && asked.branch && asked.branch !== shownBranch) {
+    if (single && asked && asked.branch && asked.branch !== shownBranch) {
       // В ленте швом подписан каждый кусок, включая первый: она для того
       // и нужна, чтобы видеть, где чей вариант. В пути ветки первый шов
       // лишний — разговор с него и начинается.
@@ -978,6 +980,16 @@ function renderTape(view) {
         el.tape.appendChild(branchSeam(view.lanes[0], asked.branch, linear));
       }
       shownBranch = asked.branch;
+    }
+
+    // Стратегию можно переключить посреди разговора, и тогда соседние
+    // ходы сравнивать нельзя: у них разный контекст. Каждый ход помнит,
+    // по какой стратегии шёл, — на смене ставим шов, иначе подмену
+    // замечаешь только по числам, и то не сразу.
+    const mode = asked && asked.context && asked.context.mode;
+    if (single && mode && mode !== shownMode) {
+      if (shownMode !== null) el.tape.appendChild(modeSeam(mode));
+      shownMode = mode;
     }
 
     const beat = document.createElement('div');
@@ -1009,6 +1021,19 @@ function renderTape(view) {
     beat.appendChild(row);
     el.tape.appendChild(beat);
   }
+}
+
+// modeSeam — шов смены стратегии: с этого места модель получает историю
+// по другим правилам. Красится цветом той стратегии, на которую перешли,
+// — тем же, каким она подписана на пульте и на стенде.
+function modeSeam(mode) {
+  const info = MODES[mode] || { name: mode, rule: '' };
+  const seam = document.createElement('div');
+  seam.className = 'seam mode';
+  seam.style.setProperty('--tone', info.tone || 'var(--ink)');
+  seam.textContent = 'дальше — стратегия «' + info.name + '»';
+  seam.title = info.rule ? 'С этого хода: ' + info.rule : '';
+  return seam;
 }
 
 // branchSeam — шов в ленте: с этого места разговор идёт в другой ветке.
