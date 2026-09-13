@@ -558,6 +558,23 @@ details.card > summary { cursor: pointer; font-family: var(--mono); font-size: 1
    он же стоит у неё на пульте и в шапке дорожки. */
 .seam.mode { border-left-color: var(--tone, var(--window)); color: var(--tone, var(--ink)); }
 
+/* Граница окна — не событие разговора, а край видимого, поэтому она не
+   шов слева, а линейка поперёк ленты с подписью посередине. */
+.window-mark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--tone, var(--muted));
+}
+.window-mark::before, .window-mark::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--tone, var(--rule));
+}
+
 /* ---------- Поле вопроса ---------- */
 
 .ask { margin-top: 18px; }

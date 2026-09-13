@@ -779,9 +779,13 @@ function renderStage() {
 
 // laneTurns — ходы дорожки вместе с идущим прямо сейчас.
 function laneTurns(lane) {
+  // messages — сколько сообщений ход добавил в ветку. По ним лента
+  // находит границу окна: счётчик хода считает отрезанное в сообщениях,
+  // а лента нарисована ходами.
   const turns = (lane.turns || []).map((t) => ({
     id: t.id, status: t.status, user: t.user, reply: t.reply, error: t.error,
-    branch: t.branch, totals: t.totals, context: t.context, events: t.events || [], live: false
+    branch: t.branch, messages: t.messages, totals: t.totals, context: t.context,
+    events: t.events || [], live: false
   }));
   if (lane.active) {
     const live = state.live[lane.active.id];
@@ -964,6 +968,11 @@ function renderTape(view) {
     return;
   }
 
+  // Граница окна считается по одной дорожке: на стенде у трёх дорожек
+  // она своя, и одна черта поперёк ленты врала бы сразу про две. В ленте
+  // «весь диалог» её тоже нет — тот поток модель не видела ни разу.
+  const bound = single && !linear ? windowBoundary(lanes[0]) : null;
+
   let shownBranch = null;
   let shownMode = null;
   for (let i = 0; i < beats; i++) {
@@ -1020,7 +1029,46 @@ function renderTape(view) {
     });
     beat.appendChild(row);
     el.tape.appendChild(beat);
+
+    // Граница окна: выше неё модель на последнем ходе не видела ничего.
+    // Черта двигается — с каждым новым ходом она опускается.
+    if (bound && bound.after === i) el.tape.appendChild(windowMark(bound));
   }
+}
+
+// windowBoundary — где на последнем ходе прошла граница окна. Отрезанное
+// считается в сообщениях, а лента нарисована ходами, поэтому сообщения
+// набираются ходами, пока не наберётся отрезанное.
+function windowBoundary(turns) {
+  let last = null;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const c = turns[i].context;
+    if (c && c.mode) { last = c; break; }
+  }
+  if (!last || !last.dropped) return null;
+
+  let seen = 0;
+  for (let i = 0; i < turns.length; i++) {
+    seen += turns[i].messages || 0;
+    if (seen >= last.dropped) return { after: i, dropped: last.dropped, mode: last.mode };
+  }
+  return null;
+}
+
+// windowMark — сама черта. Не шов слева, а линейка поперёк ленты: это не
+// событие разговора, а край того, что видит модель.
+function windowMark(bound) {
+  const info = MODES[bound.mode] || {};
+  const mark = document.createElement('div');
+  mark.className = 'window-mark';
+  mark.style.setProperty('--tone', info.tone || 'var(--muted)');
+  const count = plural(bound.dropped, 'сообщение', 'сообщения', 'сообщений');
+  mark.textContent = bound.mode === 'facts'
+    ? 'выше дословной истории нет: ' + count + ' заменено карточкой фактов'
+    : 'выше модель не видит ничего: ' + count + ' отрезано окном';
+  mark.title = 'Граница окна на последнем ходе. С каждым новым ходом она опускается ниже: ' +
+    'окно держит постоянный размер, а разговор растёт.';
+  return mark;
 }
 
 // modeSeam — шов смены стратегии: с этого места модель получает историю
