@@ -447,7 +447,11 @@ function applyDetail(detail) {
 
 async function markCheckpoint() {
   if (!state.view || state.view.kind !== 'single') return;
-  const name = prompt('Название точки сохранения (можно оставить пустым):', '');
+  // Про «это не ветка» сказано прямо в вопросе: человек, который хочет
+  // ветку, обычно жмёт первую кнопку и вписывает в неё имя ветки.
+  const name = prompt(
+    'Точка помечает место в разговоре — ветку от неё можно отвести потом, кнопкой «⑂».\n' +
+    'Название точки (можно оставить пустым):', '');
   if (name === null) return;
   try {
     const data = await postJSON('/api/conversations/' + encodeURIComponent(state.view.id) + '/checkpoints', { name });
@@ -526,6 +530,9 @@ function renderBranches(lane) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'branch' + (branch.active ? ' on' : '');
+    chip.title = branch.active
+      ? 'Здесь идёт разговор: следующая реплика уйдёт в эту ветку'
+      : 'Перейти в эту ветку — следующая реплика уйдёт в неё';
     chip.addEventListener('click', () => { if (!branch.active) switchBranch(branch.id); });
 
     const name = document.createElement('b');
@@ -546,28 +553,28 @@ function renderBranches(lane) {
     el.branchList.appendChild(chip);
   }
 
+  // Точка — это не ветка, а место, от которого ветку можно отвести.
+  // Разница неочевидна, а чипы стоят рядом, поэтому подпись у ряда —
+  // глагол: она говорит, что сделает клик.
   const points = lane.checkpoints || [];
   el.checkpointList.innerHTML = '';
-  if (!points.length) {
-    const hint = document.createElement('span');
-    hint.className = 'hint';
-    hint.textContent = 'Точек пока нет. «Ветка отсюда» поставит точку на текущем конце сама.';
-    el.checkpointList.appendChild(hint);
-    return;
-  }
   const label = document.createElement('span');
   label.className = 'hint';
-  label.textContent = 'Точки:';
+  label.textContent = points.length
+    ? 'Отвести ветку от точки:'
+    : 'Точек пока нет. «Ветка отсюда» поставит точку на текущем конце сама.';
   el.checkpointList.appendChild(label);
+
   for (const point of points) {
     const branch = (lane.tree || []).find((b) => b.id === point.branch);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'checkpoint';
-    button.textContent = point.name;
-    button.title = 'Ветка от этой точки: ' + (branch ? '«' + branch.name + '», ' : '') +
-      'ход ' + point.turn + ', ' + plural(point.at, 'сообщение', 'сообщения', 'сообщений') +
-      (point.facts && point.facts.entries ? ', фактов ' + point.facts.entries.length : '');
+    button.textContent = '⑂ ' + point.name;
+    button.title = 'Создать новую ветку от этой точки и перейти в неё. Точка стоит в ветке ' +
+      (branch ? '«' + branch.name + '», ' : '') + 'после хода ' + point.turn + ' (' +
+      plural(point.at, 'сообщение', 'сообщения', 'сообщений') +
+      (point.facts && point.facts.entries ? ', фактов ' + point.facts.entries.length : '') + ')';
     button.addEventListener('click', () => forkFrom(point.id));
     el.checkpointList.appendChild(button);
   }

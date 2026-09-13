@@ -64,9 +64,14 @@
       <div class="branches" id="branches" hidden>
         <div class="branches-head">
           <span class="switcher-label">Ветки</span>
+          <!-- Ветвление идёт первым: это то, ради чего сюда приходят.
+               Точка — вспомогательное действие, она только помечает
+               место, и об этом сказано в подсказке. -->
           <div class="branches-actions">
-            <button type="button" id="mark-button" class="ghost">Поставить точку</button>
-            <button type="button" id="fork-button" class="ghost">Ветка отсюда</button>
+            <button type="button" id="fork-button" class="ghost"
+              title="Создать новую ветку от текущего конца разговора и перейти в неё. Точка на этом месте поставится сама.">⑂ Ветка отсюда</button>
+            <button type="button" id="mark-button" class="ghost"
+              title="Только пометить это место в разговоре, ветку не создавать: отвести её от точки можно будет позже, когда разговор уйдёт вперёд.">Поставить точку</button>
           </div>
         </div>
         <div class="branch-list" id="branch-list"></div>
