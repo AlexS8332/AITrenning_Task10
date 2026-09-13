@@ -171,6 +171,23 @@ func TestForkInheritsPrefixAndStaysIndependent(t *testing.T) {
 		t.Errorf("общее начало в ленте повторяется %d раз", count)
 	}
 
+	// Ходы одной лентой идут в том же порядке, что и сообщения: сначала
+	// общая часть, потом один вариант, потом другой. Это не хронология, а
+	// «диалог, в котором ветвиться было нельзя», — с ним и сравнивают.
+	turns := c.LinearTurns()
+	if len(turns) != 4 {
+		t.Fatalf("ходов одной лентой %d, ждали 4", len(turns))
+	}
+	order := []string{"собираем ТЗ", "срок 1 марта", "делаем нативное приложение", "делаем PWA"}
+	for i, want := range order {
+		if turns[i].User != want {
+			t.Errorf("ход %d одной лентой: %q, ждали %q", i+1, turns[i].User, want)
+		}
+	}
+	if turns[2].Branch != kotlin.ID || turns[3].Branch != pwa.ID {
+		t.Errorf("ход в ленте должен помнить свою ветку: %q, %q", turns[2].Branch, turns[3].Branch)
+	}
+
 	// Переключение меняет то, что уйдёт модели на следующем ходе.
 	if err := c.Switch(kotlin.ID); err != nil {
 		t.Fatal(err)

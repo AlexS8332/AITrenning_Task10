@@ -118,6 +118,16 @@ type Detail struct {
 	// отпочковаться.
 	Tree        []BranchInfo         `json:"tree"`
 	Checkpoints []history.Checkpoint `json:"checkpoints"`
+	// Linear — все ходы всех веток одной лентой, LinearMessages — сколько
+	// в них сообщений. Это тот же разговор, каким он был бы без
+	// ветвления; интерфейс показывает его рядом с путём ветки, и разницу
+	// видно глазами, а не только в счётчике токенов.
+	//
+	// Журналы ходов отсюда вырезаны: лента нужна для сравнения и
+	// навигации, а читать журнал идут в саму ветку. Иначе общая часть
+	// уезжала бы в браузер дважды.
+	Linear         []history.Turn `json:"linear"`
+	LinearMessages int            `json:"linearMessages"`
 }
 
 // ComparisonModes — стратегии, которые сравниваются на стенде, в порядке
@@ -245,11 +255,24 @@ func (m *Manager) detailLocked(c *history.Conversation) Detail {
 	if d.Checkpoints == nil {
 		d.Checkpoints = []history.Checkpoint{}
 	}
+	d.Linear = withoutEvents(clone.LinearTurns())
+	d.LinearMessages = len(clone.Linear())
 	if s, running := m.active[c.ID]; running {
 		v := s.View()
 		d.Active = &v
 	}
 	return d
+}
+
+// withoutEvents — ходы без журналов, для ленты «весь диалог». Пустой
+// список, а не nil: интерфейс ходит по нему без проверок.
+func withoutEvents(turns []history.Turn) []history.Turn {
+	out := make([]history.Turn, 0, len(turns))
+	for _, t := range turns {
+		t.Events = nil
+		out = append(out, t)
+	}
+	return out
 }
 
 // treeOf — ветки диалога для интерфейса, в порядке появления.

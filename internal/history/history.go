@@ -239,14 +239,33 @@ func (c *Conversation) PathTurns(id string) []Turn {
 // шло одним потоком. Число нужно для сравнения: оно показывает, сколько
 // контекста ветка не тащит за собой.
 func (c *Conversation) Linear() []llm.Message {
-	order := make([]*Branch, len(c.Branches))
-	copy(order, c.Branches)
-	sort.SliceStable(order, func(i, j int) bool { return order[i].Created.Before(order[j].Created) })
 	var out []llm.Message
-	for _, b := range order {
+	for _, b := range c.linearBranches() {
 		out = append(out, b.Messages...)
 	}
 	return out
+}
+
+// LinearTurns — ходы всех веток той же лентой и в том же порядке, что и
+// Linear. Строгой хронологией это не является: в ветку можно вернуться
+// через десяток ходов в соседней, и тогда её ходы встанут раньше. Но
+// сравнивают не хронологию, а «диалог, в котором ветвиться было нельзя»,
+// — а он именно такой: сначала общая часть, потом один вариант, потом
+// другой.
+func (c *Conversation) LinearTurns() []Turn {
+	var out []Turn
+	for _, b := range c.linearBranches() {
+		out = append(out, b.Turns...)
+	}
+	return out
+}
+
+// linearBranches — ветки в порядке появления.
+func (c *Conversation) linearBranches() []*Branch {
+	order := make([]*Branch, len(c.Branches))
+	copy(order, c.Branches)
+	sort.SliceStable(order, func(i, j int) bool { return order[i].Created.Before(order[j].Created) })
+	return order
 }
 
 // Messages — путь текущей ветки: то, что уйдёт модели на следующем ходе.

@@ -517,6 +517,32 @@ func TestBranchesAreIndependentAndSurviveRestart(t *testing.T) {
 		t.Errorf("активной должна быть последняя ветка: %+v", d.Tree)
 	}
 
+	// Лента «весь диалог» — то, чем разговор был бы без ветвления:
+	// интерфейс показывает её рядом с путём ветки, и это сравнение
+	// дерева с линейным диалогом.
+	if len(d.Linear) != 4 || d.LinearMessages != 8 {
+		t.Fatalf("лента: %d ходов, %d сообщений", len(d.Linear), d.LinearMessages)
+	}
+	if len(d.Turns) != 3 || len(d.Messages) != 6 {
+		t.Errorf("путь ветки должен быть короче ленты: %d ходов, %d сообщений", len(d.Turns), len(d.Messages))
+	}
+	var branches []string
+	for _, turn := range d.Linear {
+		branches = append(branches, turn.Branch)
+		// Журналы из ленты вырезаны: общая часть иначе уезжала бы в
+		// браузер дважды, а читать журнал идут в саму ветку.
+		if turn.Events != nil {
+			t.Errorf("в ленте не должно быть журналов ходов: %+v", turn.Events)
+		}
+	}
+	if branches[0] != d.Tree[0].ID || branches[2] != first.ID || branches[3] != second.ID {
+		t.Errorf("порядок веток в ленте: %v", branches)
+	}
+	// А в пути ветки журналы есть: именно там их и читают.
+	if len(d.Turns[0].Events) == 0 {
+		t.Errorf("путь ветки должен приходить с журналами ходов")
+	}
+
 	// Переключение обратно: модель снова видит первую ветку.
 	d, err = m.Switch(convID, first.ID)
 	if err != nil {
@@ -553,7 +579,6 @@ func TestBranchesAreIndependentAndSurviveRestart(t *testing.T) {
 	if after.BranchID != first.ID || len(after.Messages) != 8 {
 		t.Errorf("текущая ветка после перезапуска: %q, сообщений %d", after.BranchName, len(after.Messages))
 	}
-	_ = second
 }
 
 // Ветвление без точки — обычный случай: пользователь жмёт «ветвиться»

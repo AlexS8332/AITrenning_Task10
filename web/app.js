@@ -42,6 +42,10 @@ const state = {
   draftKind: 'comparison',
   draftMode: 'facts',
   fileLane: 0,
+  // Что показывает лента: путь текущей ветки (то, что видит модель) или
+  // весь диалог одной лентой (то, чем он был бы без ветвления). Это и
+  // есть сравнение дерева с линейным диалогом.
+  tapeMode: 'branch',
   // Ходы, у которых ответ развёрнут целиком. Лента перерисовывается на
   // каждое событие идущего хода, и без этого развёрнутый ответ схлопывался
   // бы сам собой посреди чтения.
@@ -54,7 +58,8 @@ for (const id of [
   'new-button', 'conversations', 'conversations-empty',
   'stage-title', 'stage-note', 'stand-button', 'file-button', 'delete-button',
   'switcher', 'switcher-buttons', 'switcher-rule',
-  'branches', 'branch-list', 'checkpoint-list', 'mark-button', 'fork-button',
+  'nav-block', 'nav-note', 'tree', 'tree-hint', 'mark-button', 'fork-button',
+  'views', 'view-branch', 'view-linear', 'view-note',
   'lane-heads', 'tape', 'tape-empty',
   'composer', 'text', 'send-button', 'error',
   'new-dialog', 'new-close', 'new-create', 'agent-choice', 'kind-choice',
@@ -134,6 +139,8 @@ async function init() {
   });
   el.markButton.addEventListener('click', markCheckpoint);
   el.forkButton.addEventListener('click', () => forkFrom(''));
+  el.viewBranch.addEventListener('click', () => setTapeMode('branch'));
+  el.viewLinear.addEventListener('click', () => setTapeMode('linear'));
 
   await refreshList();
 
@@ -254,7 +261,9 @@ function openBlank() {
   el.fileButton.hidden = true;
   el.deleteButton.hidden = true;
   el.switcher.hidden = true;
-  el.branches.hidden = true;
+  el.navBlock.hidden = true;
+  el.views.hidden = true;
+  state.tapeMode = 'branch';
   el.laneHeads.innerHTML = '';
   el.tape.innerHTML = '';
   el.tape.appendChild(el.tapeEmpty);
@@ -348,7 +357,7 @@ function setBusy(busy) {
   el.markButton.disabled = busy;
   el.forkButton.disabled = busy;
   for (const b of el.switcherButtons.querySelectorAll('button')) b.disabled = busy;
-  for (const b of el.branchList.querySelectorAll('button')) b.disabled = busy;
+  for (const b of el.tree.querySelectorAll('button')) b.disabled = busy;
 }
 
 /* ---------- Ход: отправка и поток событий ---------- */
@@ -520,64 +529,166 @@ function renderSwitcher(lane) {
   el.switcherRule.textContent = info.rule;
 }
 
-// renderBranches — дерево диалога: ветки чипами, под ними точки, от
-// которых можно отпочковаться. Активная ветка — та, в которую уйдёт
-// следующая реплика.
-function renderBranches(lane) {
+// renderTree — дерево диалога на пульте слева: ветки с отступом по
+// глубине, под каждой её точки, а под точкой — ветки, выросшие из неё.
+// Пульт липнет к верху окна, поэтому ветвиться и переключаться можно с
+// любого места ленты, не прокручивая её вверх.
+function renderTree(lane) {
   const tree = lane.tree || [];
-  el.branchList.innerHTML = '';
-  for (const branch of tree) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'branch' + (branch.active ? ' on' : '');
-    chip.title = branch.active
-      ? 'Здесь идёт разговор: следующая реплика уйдёт в эту ветку'
-      : 'Перейти в эту ветку — следующая реплика уйдёт в неё';
-    chip.addEventListener('click', () => { if (!branch.active) switchBranch(branch.id); });
-
-    const name = document.createElement('b');
-    name.textContent = branch.name;
-    chip.appendChild(name);
-
-    const meta = document.createElement('span');
-    const parts = [plural(branch.pathTurns, 'ход', 'хода', 'ходов') + ' в пути'];
-    if (branch.parent) {
-      const parent = tree.find((b) => b.id === branch.parent);
-      parts.push('от «' + (parent ? parent.name : '?') + '» после хода ' + branch.forkTurn);
-    }
-    if (branch.facts && branch.facts.count) {
-      parts.push(plural(branch.facts.count, 'факт', 'факта', 'фактов'));
-    }
-    meta.textContent = parts.join(' · ');
-    chip.appendChild(meta);
-    el.branchList.appendChild(chip);
-  }
-
-  // Точка — это не ветка, а место, от которого ветку можно отвести.
-  // Разница неочевидна, а чипы стоят рядом, поэтому подпись у ряда —
-  // глагол: она говорит, что сделает клик.
   const points = lane.checkpoints || [];
-  el.checkpointList.innerHTML = '';
-  const label = document.createElement('span');
-  label.className = 'hint';
-  label.textContent = points.length
-    ? 'Отвести ветку от точки:'
-    : 'Точек пока нет. «Ветка отсюда» поставит точку на текущем конце сама.';
-  el.checkpointList.appendChild(label);
+  el.tree.innerHTML = '';
 
-  for (const point of points) {
-    const branch = (lane.tree || []).find((b) => b.id === point.branch);
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'checkpoint';
-    button.textContent = '⑂ ' + point.name;
-    button.title = 'Создать новую ветку от этой точки и перейти в неё. Точка стоит в ветке ' +
-      (branch ? '«' + branch.name + '», ' : '') + 'после хода ' + point.turn + ' (' +
-      plural(point.at, 'сообщение', 'сообщения', 'сообщений') +
-      (point.facts && point.facts.entries ? ', фактов ' + point.facts.entries.length : '') + ')';
-    button.addEventListener('click', () => forkFrom(point.id));
-    el.checkpointList.appendChild(button);
+  const walk = (branch, depth) => {
+    el.tree.appendChild(branchRow(branch, depth, tree));
+
+    const own = points.filter((p) => p.branch === branch.id).sort((a, b) => a.at - b.at);
+    const kids = tree.filter((b) => b.parent === branch.id);
+    const placed = new Set();
+    // Ветка выросла из точки — значит, и стоять должна под ней: так
+    // видно не просто список, а место, где разговор раздвоился.
+    for (const point of own) {
+      el.tree.appendChild(pointRow(point, depth + 1, branch));
+      for (const kid of kids.filter((k) => k.forkAt === point.at)) {
+        placed.add(kid.id);
+        walk(kid, depth + 2);
+      }
+    }
+    for (const kid of kids.filter((k) => !placed.has(k.id))) walk(kid, depth + 1);
+  };
+
+  // Корень — ветка без родителя; на всякий случай и та, чей родитель
+  // потерялся: файл диалога можно поправить руками.
+  for (const branch of tree) {
+    if (!branch.parent || !tree.some((b) => b.id === branch.parent)) walk(branch, 0);
   }
+
+  el.navNote.textContent = [
+    plural(tree.length, 'ветка', 'ветки', 'веток'),
+    plural(points.length, 'точка', 'точки', 'точек')
+  ].join(' · ');
+
+  el.treeHint.textContent = tree.length > 1
+    ? 'Клик по ветке — перейти в неё. Клик по ⑂ — новая ветка от этой точки.'
+    : 'Нажмите «⑂ Ветка отсюда» — разговор раздвоится с этого места, и в каждой ветке он пойдёт своей дорогой.';
+}
+
+// branchRow — строка ветки: имя, длина пути и место, откуда выросла.
+function branchRow(branch, depth, tree) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'tree-branch' + (branch.active ? ' on' : '');
+  row.style.setProperty('--depth', depth);
+  row.title = branch.active
+    ? 'Здесь идёт разговор: следующая реплика уйдёт в эту ветку'
+    : 'Перейти в эту ветку — следующая реплика уйдёт в неё';
+  row.addEventListener('click', () => { if (!branch.active) switchBranch(branch.id); });
+
+  const name = document.createElement('b');
+  name.textContent = branch.name;
+  row.appendChild(name);
+
+  const meta = document.createElement('span');
+  const parts = [plural(branch.pathTurns, 'ход', 'хода', 'ходов') + ' в пути'];
+  if (branch.parent) {
+    const parent = tree.find((b) => b.id === branch.parent);
+    parts.push('своих ' + branch.turns);
+    if (parent) parts.push('от «' + parent.name + '»');
+  }
+  if (branch.facts && branch.facts.count) {
+    parts.push(plural(branch.facts.count, 'факт', 'факта', 'фактов'));
+  }
+  meta.textContent = parts.join(' · ');
+  row.appendChild(meta);
+  return row;
+}
+
+// pointRow — строка точки. Точка — не ветка, а место, от которого ветку
+// можно отвести, поэтому и подпись у неё глагольная, и знак свой.
+function pointRow(point, depth, branch) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'tree-point';
+  row.style.setProperty('--depth', depth);
+  row.title = 'Создать новую ветку от этой точки и перейти в неё. Точка стоит в ветке «' +
+    branch.name + '», после хода ' + point.turn + ' (' +
+    plural(point.at, 'сообщение', 'сообщения', 'сообщений') +
+    (point.facts && point.facts.entries ? ', фактов ' + point.facts.entries.length : '') + ')';
+  row.addEventListener('click', () => forkFrom(point.id));
+
+  const mark = document.createElement('span');
+  mark.className = 'fork';
+  mark.textContent = '⑂';
+  row.appendChild(mark);
+
+  const name = document.createElement('span');
+  name.className = 'point-name';
+  name.textContent = point.name;
+  row.appendChild(name);
+  return row;
+}
+
+/* ---------- Сравнение дерева с линейным диалогом ---------- */
+
+// renderViews — две вкладки над лентой. «Путь ветки» — то, что видит
+// модель; «Весь диалог лентой» — тот же разговор, каким он был бы, если
+// бы ветвиться было нельзя. Пока ветка одна, сравнивать нечего, и
+// вкладок нет.
+function renderViews(lane) {
+  const linear = lane.linear || [];
+  const branched = (lane.branches || 1) > 1;
+  el.views.hidden = !branched;
+  if (!branched) {
+    state.tapeMode = 'branch';
+    return;
+  }
+
+  el.viewBranch.classList.toggle('on', state.tapeMode === 'branch');
+  el.viewLinear.classList.toggle('on', state.tapeMode === 'linear');
+  el.viewBranch.textContent = 'Путь ветки «' + (lane.branchName || '—') + '»';
+  el.viewLinear.textContent = 'Весь диалог лентой';
+
+  const pathTurns = (lane.turns || []).length;
+  const pathMessages = (lane.messages || []).length;
+  const hidden = (lane.linearMessages || 0) - pathMessages;
+  const parts = [];
+  if (state.tapeMode === 'branch') {
+    parts.push('Модель видит путь ветки: ' + plural(pathTurns, 'ход', 'хода', 'ходов') +
+      ', ' + plural(pathMessages, 'сообщение', 'сообщения', 'сообщений') + '.');
+    if (hidden > 0) {
+      parts.push('В соседних ветках — ещё ' + plural(hidden, 'сообщение', 'сообщения', 'сообщений') +
+        '; в этот контекст они не попадают вовсе.');
+    }
+  } else {
+    parts.push('Так выглядел бы разговор, если бы ветвиться было нельзя: ' +
+      plural(linear.length, 'ход', 'хода', 'ходов') + ', ' +
+      plural(lane.linearMessages || 0, 'сообщение', 'сообщения', 'сообщений') +
+      ' в одном контексте, все ветки подряд.');
+    parts.push('Модель этого не видела ни разу: ходы шли по веткам.');
+  }
+  const money = linearCost(lane);
+  if (money) parts.push(money);
+  el.viewNote.textContent = parts.join(' ');
+}
+
+// linearCost — во что обошёлся бы последний ход без ветвления. Счётчик
+// живёт в самом ходе: агент считает эту оценку даром на каждом ходе.
+// Пока вторая ветка не заведена, сравнивать не с чем, и счётчика нет.
+function linearCost(lane) {
+  const turns = lane.turns || [];
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const c = turns[i].context || {};
+    if (c.linear && c.estimate && c.estimate.total) {
+      return 'На последнем ходе модель получила ≈' + c.estimate.total +
+        ' токенов вместо ≈' + c.linear + ', которые ушли бы одной лентой.';
+    }
+  }
+  return '';
+}
+
+function setTapeMode(mode) {
+  if (state.tapeMode === mode) return;
+  state.tapeMode = mode;
+  renderStage();
 }
 
 /* ---------- Отрисовка стенда ---------- */
@@ -587,11 +698,14 @@ function renderStage() {
   if (!view) return;
   const single = view.kind === 'single';
   el.switcher.hidden = !single;
-  el.branches.hidden = !single;
+  el.navBlock.hidden = !single;
   if (single) {
     renderSwitcher(view.lanes[0]);
-    renderBranches(view.lanes[0]);
+    renderTree(view.lanes[0]);
+    renderViews(view.lanes[0]);
     setBusy(Object.keys(state.sources).length > 0);
+  } else {
+    el.views.hidden = true;
   }
   el.laneHeads.style.setProperty('--lanes', view.lanes.length);
   renderLaneHeads(view);
@@ -768,7 +882,14 @@ function segTitle(cls) {
 }
 
 function renderTape(view) {
-  const lanes = view.lanes.map(laneTurns);
+  // В режиме ленты дорожка одна и в ней все ходы всех веток подряд: так
+  // выглядел бы разговор, если бы ветвиться было нельзя. Карточку фактов
+  // под последним ходом в этом режиме не показываем — она принадлежит
+  // текущей ветке, а лента к ветке не привязана.
+  const linear = view.kind === 'single' && state.tapeMode === 'linear';
+  const lanes = linear
+    ? [(view.lanes[0].linear || []).map((t) => ({ ...t, events: [], live: false }))]
+    : view.lanes.map(laneTurns);
   const beats = lanes.reduce((max, turns) => Math.max(max, turns.length), 0);
   el.tape.innerHTML = '';
   if (!beats) {
@@ -785,7 +906,12 @@ function renderTape(view) {
     // ветвления надо показать: дальше идут ходы, которых в соседней ветке
     // нет.
     if (view.kind === 'single' && asked && asked.branch && asked.branch !== shownBranch) {
-      if (shownBranch !== null) el.tape.appendChild(branchSeam(view.lanes[0], asked.branch));
+      // В ленте швом подписан каждый кусок, включая первый: она для того
+      // и нужна, чтобы видеть, где чей вариант. В пути ветки первый шов
+      // лишний — разговор с него и начинается.
+      if (shownBranch !== null || linear) {
+        el.tape.appendChild(branchSeam(view.lanes[0], asked.branch, linear));
+      }
       shownBranch = asked.branch;
     }
 
@@ -808,7 +934,7 @@ function renderTape(view) {
     row.className = 'beat-lanes';
     row.style.setProperty('--lanes', view.lanes.length);
     view.lanes.forEach((lane, j) => {
-      row.appendChild(laneCell(lane, lanes[j][i], i === beats - 1));
+      row.appendChild(laneCell(lane, lanes[j][i], i === beats - 1 && !linear));
     });
     beat.appendChild(row);
     el.tape.appendChild(beat);
@@ -816,13 +942,14 @@ function renderTape(view) {
 }
 
 // branchSeam — шов в ленте: с этого места разговор идёт в другой ветке.
-function branchSeam(lane, branchId) {
+// В режиме «весь диалог лентой» это заголовок куска, в пути ветки —
+// отметка на месте ветвления.
+function branchSeam(lane, branchId, head) {
   const branch = (lane.tree || []).find((b) => b.id === branchId);
+  const name = branch ? '«' + branch.name + '»' : 'другая ветка';
   const seam = document.createElement('div');
-  seam.className = 'seam';
-  seam.textContent = branch
-    ? 'дальше — ветка «' + branch.name + '»'
-    : 'дальше — другая ветка';
+  seam.className = 'seam' + (head ? ' head' : '');
+  seam.textContent = head ? 'ветка ' + name : 'дальше — ветка ' + name;
   return seam;
 }
 

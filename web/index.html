@@ -28,22 +28,48 @@
   </header>
 
   <main class="bench">
-    <!-- Слева журнал наблюдений: прошлые стенды и одиночные диалоги.
-         В центре — сам стенд: шапки дорожек со шкалами контекста, дерево
-         веток, лента тактов и поле вопроса. -->
-    <aside class="ledger">
-      <div class="ledger-head">
-        <h2>Журнал</h2>
-        <button type="button" id="new-button" class="ghost">Новый</button>
+    <!-- Слева — пульт: он липнет к верху окна и не уезжает вместе с
+         лентой. Здесь всё, чем управляют диалогом: журнал прошлых
+         стендов, дерево веток с точками и переключатель стратегий.
+         В центре — сам стенд: шапки дорожек, лента и поле реплики. -->
+    <aside class="console">
+      <nav class="side-block" id="nav-block" hidden>
+        <div class="side-head">
+          <h2>Дерево диалога</h2>
+          <span class="side-note" id="nav-note">—</span>
+        </div>
+        <div class="nav-actions">
+          <button type="button" id="fork-button" class="solid small"
+            title="Создать новую ветку от текущего конца разговора и перейти в неё. Точка на этом месте поставится сама.">⑂ Ветка отсюда</button>
+          <button type="button" id="mark-button" class="ghost"
+            title="Только пометить это место в разговоре, ветку не создавать: отвести её от точки можно будет позже, когда разговор уйдёт вперёд.">Точка</button>
+        </div>
+        <div class="tree" id="tree"></div>
+        <p class="hint tree-hint" id="tree-hint"></p>
+      </nav>
+
+      <div class="side-block" id="switcher" hidden>
+        <div class="side-head">
+          <h2>Стратегия</h2>
+        </div>
+        <div class="switcher-buttons" id="switcher-buttons"></div>
+        <p class="hint" id="switcher-rule"></p>
       </div>
-      <ul class="ledger-list" id="conversations"></ul>
-      <p class="empty" id="conversations-empty" hidden>Пока пусто. Задайте первый вопрос.</p>
+
+      <div class="side-block">
+        <div class="side-head">
+          <h2>Журнал</h2>
+          <button type="button" id="new-button" class="ghost">Новый</button>
+        </div>
+        <ul class="ledger-list" id="conversations"></ul>
+        <p class="empty" id="conversations-empty" hidden>Пока пусто. Задайте первый вопрос.</p>
+      </div>
     </aside>
 
     <section class="stage">
       <div class="stage-head">
         <h2 id="stage-title">Новый стенд</h2>
-        <span class="stage-note" id="stage-note">вопрос уйдёт трём дорожкам сразу</span>
+        <span class="stage-note" id="stage-note">реплика уйдёт трём дорожкам сразу</span>
         <div class="stage-actions">
           <button type="button" id="stand-button" class="ghost" hidden>Вернуться на стенд</button>
           <button type="button" id="file-button" class="ghost" hidden>Файл на диске</button>
@@ -51,38 +77,22 @@
         </div>
       </div>
 
-      <!-- Переключатель стратегий одиночного диалога: сообщения остаются
-           на месте, меняется только то, что из них уходит модели. -->
-      <div class="switcher" id="switcher" hidden>
-        <span class="switcher-label">Стратегия</span>
-        <div class="switcher-buttons" id="switcher-buttons"></div>
-        <span class="switcher-rule" id="switcher-rule"></span>
-      </div>
-
-      <!-- Ветки: дерево диалога, точки сохранения и переключение между
-           продолжениями. -->
-      <div class="branches" id="branches" hidden>
-        <div class="branches-head">
-          <span class="switcher-label">Ветки</span>
-          <!-- Ветвление идёт первым: это то, ради чего сюда приходят.
-               Точка — вспомогательное действие, она только помечает
-               место, и об этом сказано в подсказке. -->
-          <div class="branches-actions">
-            <button type="button" id="fork-button" class="ghost"
-              title="Создать новую ветку от текущего конца разговора и перейти в неё. Точка на этом месте поставится сама.">⑂ Ветка отсюда</button>
-            <button type="button" id="mark-button" class="ghost"
-              title="Только пометить это место в разговоре, ветку не создавать: отвести её от точки можно будет позже, когда разговор уйдёт вперёд.">Поставить точку</button>
-          </div>
+      <!-- Сравнение дерева с линейным диалогом: две вкладки над лентой.
+           «Путь ветки» — то, что видит модель; «Весь диалог лентой» — тот
+           же разговор, каким он был бы, если бы ветвиться было нельзя. -->
+      <div class="views" id="views" hidden>
+        <div class="view-tabs">
+          <button type="button" id="view-branch" class="ghost on">Путь ветки</button>
+          <button type="button" id="view-linear" class="ghost">Весь диалог лентой</button>
         </div>
-        <div class="branch-list" id="branch-list"></div>
-        <div class="checkpoint-list" id="checkpoint-list"></div>
+        <p class="view-note" id="view-note"></p>
       </div>
 
       <!-- Шапки дорожек: имя стратегии, шкала занятого контекста и итоги.
            Шкалы стоят рядом намеренно — их сравнивают взглядом. -->
       <div class="lane-heads" id="lane-heads"></div>
 
-      <!-- Лента тактов: вопрос во всю ширину, под ним ответы дорожек. -->
+      <!-- Лента тактов: реплика во всю ширину, под ней ответы дорожек. -->
       <div class="tape" id="tape">
         <p class="empty" id="tape-empty">
           Начните разбор задачи — например: «Меня зовут Марина, я продакт в сети пекарен,
@@ -109,7 +119,7 @@
       <h2>Что заводим</h2>
       <button type="button" id="new-close" class="ghost">Отмена</button>
     </div>
-    <p class="hint">Стенд сравнивает стратегии между собой: один вопрос уходит трём диалогам сразу. Одиночный диалог — место для веток: в нём можно поставить точку и развести продолжения.</p>
+    <p class="hint">Стенд сравнивает стратегии между собой: одна реплика уходит трём диалогам сразу. Одиночный диалог — место для веток: в нём можно поставить точку и развести продолжения.</p>
     <div class="agent-choice" id="kind-choice"></div>
     <p class="hint">Тип агента задаётся один раз и хранится в диалоге.</p>
     <div class="agent-choice" id="agent-choice"></div>
