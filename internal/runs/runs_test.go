@@ -767,3 +767,70 @@ func TestStrategySurvivesRestart(t *testing.T) {
 		}
 	}
 }
+
+// Стратегия диалога должна пережить перезапуск не только как поле в
+// файле, но и как поведение: ход после перезагрузки обязан идти по той же
+// стратегии, а не по умолчанию сервера.
+func TestStrategyAppliedAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+	fake := &llmtest.Fake{Fn: func(req llm.Request) (llm.Response, error) {
+		if isExtract(req) {
+			return llmtest.Text(`{"set":[{"key":"цель","value":"смета"}]}`), nil
+		}
+		return llmtest.Text("ответ"), nil
+	}}
+
+	m := newFactsManager(t, dir, fake)
+	s, err := m.StartWith("analyst", "считаем смету", strategy.ModeFacts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conv := wait(t, s).ConversationID
+	for i := 0; i < 5; i++ {
+		next, err := m.Send(conv, "ещё реплика")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wait(t, next)
+	}
+	before, _ := m.Get(conv)
+	if before.Strategy != strategy.ModeFacts {
+		t.Fatalf("до перезапуска стратегия %q", before.Strategy)
+	}
+	if before.Turns[len(before.Turns)-1].Context.Mode != strategy.ModeFacts {
+		t.Fatalf("до перезапуска ход шёл по %q", before.Turns[len(before.Turns)-1].Context.Mode)
+	}
+
+	// «Перезапуск»: новый менеджер на том же каталоге и с теми же
+	// настройками сервера.
+	restored := newFactsManager(t, dir, fake)
+	if n, errs := restored.Load(); n != 1 || len(errs) != 0 {
+		t.Fatalf("после перезапуска: %d %v", n, errs)
+	}
+	after, _ := restored.Get(conv)
+	if after.Strategy != strategy.ModeFacts {
+		t.Fatalf("после перезапуска стратегия в диалоге: %q", after.Strategy)
+	}
+
+	next, err := restored.Send(conv, "реплика после перезапуска")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := wait(t, next)
+	if v.Status != StatusDone {
+		t.Fatalf("ход: %+v", v)
+	}
+	if v.Context.Mode != strategy.ModeFacts {
+		t.Errorf("ход после перезапуска пошёл по стратегии %q вместо %q", v.Context.Mode, strategy.ModeFacts)
+	}
+	if v.Context.Estimate.Facts == 0 {
+		t.Errorf("карточка фактов не ушла модели: %+v", v.Context.Estimate)
+	}
+	if v.Context.Dropped == 0 {
+		t.Errorf("окно ничего не отрезало: %+v", v.Context)
+	}
+	d, _ := restored.Get(conv)
+	if d.Strategy != strategy.ModeFacts {
+		t.Errorf("после хода стратегия в диалоге стала %q", d.Strategy)
+	}
+}
