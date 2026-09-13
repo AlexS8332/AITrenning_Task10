@@ -357,7 +357,9 @@ function setBusy(busy) {
   el.markButton.disabled = busy;
   el.forkButton.disabled = busy;
   for (const b of el.switcherButtons.querySelectorAll('button')) b.disabled = busy;
-  for (const b of el.tree.querySelectorAll('button')) b.disabled = busy;
+  // Переход к месту в ленте ходу не мешает — блокируем только то, что
+  // меняет диалог: переключение веток и ветвление от точки.
+  for (const b of el.tree.querySelectorAll('.tree-branch, .point-fork')) b.disabled = busy;
 }
 
 /* ---------- Ход: отправка и поток событий ---------- */
@@ -568,7 +570,7 @@ function renderTree(lane) {
   ].join(' · ');
 
   el.treeHint.textContent = tree.length > 1
-    ? 'Клик по ветке — перейти в неё. Клик по ⑂ — новая ветка от этой точки.'
+    ? 'Клик по ветке — перейти в неё. Клик по ⑂ — показать это место в ленте, кнопка «ветка» рядом — отвести отсюда новую.'
     : 'Нажмите «⑂ Ветка отсюда» — разговор раздвоится с этого места, и в каждой ветке он пойдёт своей дорогой.';
 }
 
@@ -602,29 +604,91 @@ function branchRow(branch, depth, tree) {
   return row;
 }
 
-// pointRow — строка точки. Точка — не ветка, а место, от которого ветку
-// можно отвести, поэтому и подпись у неё глагольная, и знак свой.
+// pointRow — строка точки. У точки две роли, и раньше они спорили: клик
+// и переключал взгляд, и заводил ветку. Теперь роли разведены — по самой
+// строке переходят к месту в ленте, кнопкой рядом отводят ветку.
 function pointRow(point, depth, branch) {
-  const row = document.createElement('button');
-  row.type = 'button';
+  const row = document.createElement('div');
   row.className = 'tree-point';
   row.style.setProperty('--depth', depth);
-  row.title = 'Создать новую ветку от этой точки и перейти в неё. Точка стоит в ветке «' +
-    branch.name + '», после хода ' + point.turn + ' (' +
+
+  const where = 'Ветка «' + branch.name + '», после хода ' + point.turn + ' (' +
     plural(point.at, 'сообщение', 'сообщения', 'сообщений') +
     (point.facts && point.facts.entries ? ', фактов ' + point.facts.entries.length : '') + ')';
-  row.addEventListener('click', () => forkFrom(point.id));
+
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'point-go';
+  go.title = 'Показать это место в ленте. ' + where;
+  go.addEventListener('click', () => showPlace(point));
 
   const mark = document.createElement('span');
   mark.className = 'fork';
   mark.textContent = '⑂';
-  row.appendChild(mark);
+  go.appendChild(mark);
 
   const name = document.createElement('span');
   name.className = 'point-name';
   name.textContent = point.name;
-  row.appendChild(name);
+  go.appendChild(name);
+  row.appendChild(go);
+
+  const fork = document.createElement('button');
+  fork.type = 'button';
+  fork.className = 'point-fork';
+  fork.textContent = 'ветка';
+  fork.title = 'Отвести отсюда новую ветку и перейти в неё. ' + where;
+  fork.addEventListener('click', () => forkFrom(point.id));
+  row.appendChild(fork);
   return row;
+}
+
+// showPlace прокручивает ленту к месту, где стоит точка. Если это место
+// в соседней ветке, в пути его нет — тогда переключаемся на ленту «весь
+// диалог»: там есть все ходы, и показать можно любое место.
+function showPlace(point) {
+  if (scrollToPlace(point)) return;
+
+  const lane = state.view && state.view.lanes[0];
+  if (state.tapeMode !== 'linear' && lane && (lane.branches || 1) > 1) {
+    state.tapeMode = 'linear';
+    renderStage();
+    if (scrollToPlace(point)) return;
+  }
+
+  // Не нашли. Причина одна из двух, и обе стоит назвать: место в другой
+  // ветке — или точка старая и не помнит своего хода (метку начали
+  // сохранять не сразу).
+  const branch = ((lane && lane.tree) || []).find((b) => b.id === point.branch);
+  const where = branch ? 'Это место в ветке «' + branch.name + '»' : 'Это место в другой ветке';
+  showError(point.after
+    ? where + ' — перейдите в неё, чтобы увидеть.'
+    : where + ', а сама точка поставлена до того, как появилась навигация, и не помнит своего хода: ' +
+      'перейдите в ветку и найдите ход ' + point.turn + '.');
+}
+
+// scrollToPlace ищет такт по метке хода, а у старых точек, которые её не
+// помнят, — по номеру такта. Возвращает, нашлось ли место.
+function scrollToPlace(point) {
+  let beat = null;
+  if (point.after) beat = el.tape.querySelector('[data-turn="' + point.after + '"]');
+  if (!beat && point.turn > 0 && state.tapeMode === 'branch') {
+    beat = el.tape.querySelector('[data-beat="' + point.turn + '"]');
+  }
+  if (!beat) return false;
+
+  showError('');
+  beat.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
+  // Подсветка держится пару секунд: после прокрутки на длинной ленте
+  // глазу надо за что-то зацепиться.
+  for (const lit of el.tape.querySelectorAll('.beat.lit')) lit.classList.remove('lit');
+  beat.classList.add('lit');
+  window.setTimeout(() => beat.classList.remove('lit'), 2200);
+  return true;
+}
+
+function reducedMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 /* ---------- Сравнение дерева с линейным диалогом ---------- */
@@ -917,6 +981,11 @@ function renderTape(view) {
 
     const beat = document.createElement('div');
     beat.className = 'beat';
+    // Метка хода нужна навигации: по ней точка находит своё место в
+    // ленте. Номер такта для этого не годится — в ленте «весь диалог»
+    // ходы идут не по одной ветке.
+    if (asked && asked.id) beat.dataset.turn = asked.id;
+    beat.dataset.beat = i + 1;
 
     const question = document.createElement('div');
     question.className = 'beat-q';

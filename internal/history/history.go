@@ -119,8 +119,13 @@ type Checkpoint struct {
 	Branch string `json:"branch"`
 	// At — сколько сообщений пути ветки зафиксировано, Turn — сколько
 	// ходов.
-	At      int         `json:"at"`
-	Turn    int         `json:"turn"`
+	At   int `json:"at"`
+	Turn int `json:"turn"`
+	// After — идентификатор хода, после которого стоит точка; пусто, если
+	// точка стоит в самом начале разговора. По нему интерфейс находит это
+	// место в ленте: номер хода для навигации не годится, потому что в
+	// ленте «весь диалог» ходы идут не по одной ветке.
+	After   string      `json:"after,omitempty"`
 	Created time.Time   `json:"created"`
 	Facts   facts.State `json:"facts"`
 }
@@ -313,14 +318,19 @@ func (c *Conversation) Mark(branchID, name string) (Checkpoint, error) {
 		return Checkpoint{}, fmt.Errorf("%w: %s", ErrNoBranch, branchID)
 	}
 	at := len(c.Path(branchID))
-	turn := len(c.PathTurns(branchID))
+	turns := c.PathTurns(branchID)
+	turn := len(turns)
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = fmt.Sprintf("после хода %d", turn)
 	}
+	after := ""
+	if turn > 0 {
+		after = turns[turn-1].ID
+	}
 	cp := Checkpoint{
 		ID: NewID(), Name: name, Branch: b.ID,
-		At: at, Turn: turn, Created: time.Now(),
+		At: at, Turn: turn, After: after, Created: time.Now(),
 		Facts: b.Facts.Clone(),
 	}
 	c.Checkpoints = append(c.Checkpoints, cp)

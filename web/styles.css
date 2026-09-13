@@ -147,35 +147,70 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
 /* Ветка и точка - строки одного дерева, отступ задаёт глубину. Ветка
    набрана серифом, точка - моноширинным со своим знаком: одна отвечает
    на вопрос «где мы», другая на «откуда можно уйти». */
-.tree-branch, .tree-point {
+.tree-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   text-align: left;
   background: none;
   border: 0;
+  border-left: 3px solid transparent;
   color: var(--ink);
   cursor: pointer;
   padding: 5px 6px 5px calc(9px + var(--depth, 0) * 13px);
 }
-.tree-branch { display: flex; flex-direction: column; gap: 1px; border-left: 3px solid transparent; }
 .tree-branch b { font: 600 13.5px/1.3 var(--serif); }
 .tree-branch span { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
-.tree-branch:hover, .tree-point:hover { background: var(--sheet); }
+.tree-branch:hover { background: var(--sheet); }
 .tree-branch.on {
   border-left-color: var(--full);
   background: var(--sheet);
   cursor: default;
 }
 .tree-branch.on b::after { content: " \25CF"; color: var(--full); font-size: 9px; vertical-align: middle; }
+
+/* У точки две роли, и у каждой свой орган: по строке переходят к месту в
+   ленте, кнопкой рядом отводят ветку. Одним кликом их не совместить -
+   на этом уже один раз обожглись. */
 .tree-point {
   display: flex;
   gap: 6px;
+  align-items: center;
+  padding-left: calc(9px + var(--depth, 0) * 13px);
+}
+.point-go {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
   align-items: baseline;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 5px 4px 5px 0;
   font-family: var(--mono);
   font-size: 11.5px;
   color: var(--muted);
 }
-.tree-point .fork { color: var(--facts); font-size: 13px; }
-.tree-point .point-name { border-bottom: 1px dashed var(--rule); }
-.tree-point:hover { color: var(--ink); }
+.point-go:hover { color: var(--ink); }
+.point-go .fork { color: var(--facts); font-size: 13px; }
+.point-go .point-name {
+  border-bottom: 1px dashed var(--rule);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.point-fork {
+  background: none;
+  border: 1px dashed var(--rule);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.point-fork:hover { border-color: var(--ink); color: var(--ink); }
 .tree button:disabled { opacity: .45; cursor: default; background: none; }
 .tree-hint { margin-top: 10px; font-size: 11.5px; line-height: 1.45; }
 
@@ -307,6 +342,18 @@ h2 { font: 600 16px/1.3 var(--serif); margin: 0; }
 
 .beat { border-bottom: 1px solid var(--rule-soft); }
 .beat:last-child { border-bottom: 0; }
+
+/* Такт, к которому только что перешли по точке: после прокрутки на
+   длинной ленте глазу надо за что-то зацепиться. Подсветка гаснет сама. */
+.beat.lit .beat-q { border-left-color: var(--facts); border-left-width: 6px; }
+.beat.lit { animation: lit 2.2s ease-out; }
+@keyframes lit {
+  0%, 55% { background: var(--sheet); }
+  100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .beat.lit { animation: none; background: var(--sheet); }
+}
 
 /* Вопрос — это такт всей ленты: он один на три дорожки, и по нему в ней
    ориентируются. Поэтому он не реплика в общем потоке, а полоса: своя

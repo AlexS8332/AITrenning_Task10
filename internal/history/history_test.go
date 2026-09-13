@@ -104,6 +104,19 @@ func TestForkInheritsPrefixAndStaysIndependent(t *testing.T) {
 	if cp.At != 4 || cp.Turn != 2 {
 		t.Fatalf("точка сохранения: %+v", cp)
 	}
+	// Точка помнит ход, после которого стоит: по номеру хода её место в
+	// ленте «весь диалог» не найти — там ходы идут не по одной ветке.
+	if cp.After != c.Turns()[1].ID {
+		t.Errorf("точка должна помнить ход, после которого стоит: %q", cp.After)
+	}
+	fresh := New("analyst", "m", strategy.ModeFull)
+	empty, err := fresh.Mark(fresh.Active, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.After != "" || empty.Turn != 0 {
+		t.Errorf("у точки в начале разговора хода перед ней нет: %+v", empty)
+	}
 
 	kotlin, err := c.Fork(cp.ID, "Kotlin")
 	if err != nil {
