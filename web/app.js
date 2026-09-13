@@ -742,8 +742,9 @@ function linearCost(lane) {
   for (let i = turns.length - 1; i >= 0; i--) {
     const c = turns[i].context || {};
     if (c.linear && c.estimate && c.estimate.total) {
-      return 'На последнем ходе модель получила ≈' + c.estimate.total +
-        ' токенов вместо ≈' + c.linear + ', которые ушли бы одной лентой.';
+      return 'На последнем ходе модель получила ≈' +
+        plural(c.estimate.total, 'токен', 'токена', 'токенов') +
+        ' вместо ≈' + c.linear + ', которые ушли бы одной лентой.';
     }
   }
   return '';
